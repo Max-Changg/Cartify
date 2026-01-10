@@ -1,0 +1,27 @@
+{
+  "name": "cartify",
+  "version": "1.0.0",
+  "description": "Full-stack web application with Python FastAPI backend and React TypeScript frontend",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && python main.py",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && pip install -r requirements.txt && cd ../frontend && npm install",
+    "build:frontend": "cd frontend && npm run build",
+    "preview:frontend": "cd frontend && npm run preview"
+  },
+  "keywords": [
+    "fastapi",
+    "react",
+    "typescript",
+    "tailwindcss",
+    "shadcn-ui",
+    "full-stack"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
