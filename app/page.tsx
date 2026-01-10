@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,13 +12,13 @@ interface Item {
   price: number
 }
 
-function App() {
+export default function HomePage() {
   const [items, setItems] = useState<Item[]>([])
   const [status, setStatus] = useState<string>('disconnected')
 
   useEffect(() => {
     // Check backend health
-    fetch('http://localhost:8000/api/health')
+    fetch('/api/health')
       .then(res => res.json())
       .then(data => {
         setStatus(data.status)
@@ -26,7 +28,7 @@ function App() {
       })
 
     // Fetch items
-    fetch('http://localhost:8000/api/items')
+    fetch('/api/items')
       .then(res => res.json())
       .then(data => setItems(data))
       .catch(err => console.error('Error fetching items:', err))
@@ -35,12 +37,12 @@ function App() {
   const addSampleItem = async () => {
     const newItem = {
       name: `Sample Item ${items.length + 1}`,
-      description: 'This is a sample item from the frontend',
+      description: 'This is a sample item from Next.js',
       price: Math.floor(Math.random() * 100) + 10
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/items', {
+      const response = await fetch('/api/items', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,12 +67,12 @@ function App() {
             </h1>
           </div>
           <p className="text-xl text-muted-foreground mb-4">
-            Full-Stack Starter Template
+            Next.js 15 Full-Stack App
           </p>
           <div className="flex items-center justify-center gap-2">
             <div className={`w-2 h-2 rounded-full ${status === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`} />
             <span className="text-sm text-muted-foreground">
-              Backend: {status === 'healthy' ? 'Connected' : 'Disconnected'}
+              API: {status === 'healthy' ? 'Connected' : 'Disconnected'}
             </span>
           </div>
         </div>
@@ -79,26 +81,26 @@ function App() {
           <Card>
             <CardHeader>
               <CardTitle>Tech Stack</CardTitle>
-              <CardDescription>This baseline includes everything you need to get started</CardDescription>
+              <CardDescription>Unified Next.js 15 full-stack application</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <h3 className="font-semibold">Backend</h3>
+                  <h3 className="font-semibold">Backend (API Routes)</h3>
                   <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>✓ Python 3.x</li>
-                    <li>✓ FastAPI</li>
-                    <li>✓ Uvicorn</li>
-                    <li>✓ Pydantic</li>
+                    <li>✓ Next.js 15 Route Handlers</li>
+                    <li>✓ TypeScript</li>
+                    <li>✓ Zod Validation</li>
+                    <li>✓ Server Components</li>
                   </ul>
                 </div>
                 <div className="space-y-2">
                   <h3 className="font-semibold">Frontend</h3>
                   <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>✓ React 18</li>
+                    <li>✓ Next.js 15 App Router</li>
+                    <li>✓ React 19</li>
                     <li>✓ TypeScript</li>
-                    <li>✓ Vite</li>
-                    <li>✓ Tailwind CSS</li>
+                    <li>✓ Tailwind CSS v4</li>
                     <li>✓ shadcn/ui</li>
                   </ul>
                 </div>
@@ -148,5 +150,3 @@ function App() {
     </div>
   )
 }
-
-export default App
