@@ -32,6 +32,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Playwright
+.weee_user_data/
+test-results/
+playwright-report/
+playwright/.cache/
+
 # Python (legacy - to be removed)
 __pycache__/
 *.py[cod]
