@@ -48,7 +48,7 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
         {/* Recipe Grid */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {isGenerating && recipes.length === 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 auto-rows-max items-start overflow-y-auto pr-2">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="bg-gray-100 rounded-xl aspect-video animate-shimmer" />
               ))}

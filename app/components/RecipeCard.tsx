@@ -35,7 +35,7 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Image */}
-      <div className="relative aspect-video overflow-hidden bg-gray-100">
+      <div className="relative h-40 md:h-44 overflow-hidden bg-gray-100">
         <img
           src={recipe.image}
           alt={recipe.title}
@@ -96,7 +96,7 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
       <div
         className={`absolute inset-0 rounded-xl transition-all duration-300 pointer-events-none ${
           isHovered
-            ? 'shadow-2xl -translate-y-1'
+            ? 'shadow-2xl'
             : 'shadow-sm'
         }`}
       />
