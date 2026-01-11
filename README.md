@@ -1,212 +1,218 @@
 # Cartify
 
-A modern full-stack web application starter template with Python backend and React TypeScript frontend.
+A modern full-stack application built with **Next.js 15 App Router**, **TypeScript**, **Tailwind CSS v4**, and **shadcn/ui**.
 
-## Tech Stack
+> **Note**: This project was recently migrated from Python FastAPI + React to a unified Next.js application. See [MIGRATION.md](MIGRATION.md) for details.
 
-### Backend
-- **FastAPI** - Modern, fast web framework for building APIs
-- **Uvicorn** - Lightning-fast ASGI server
-- **Pydantic** - Data validation using Python type annotations
-- **Python 3.x** - Latest Python version
+## 🚀 Tech Stack
 
-### Frontend
-- **React 18** - Modern React with hooks
+- **Next.js 15** - React framework with App Router
 - **TypeScript** - Type-safe JavaScript
-- **Vite** - Next generation frontend tooling
-- **Tailwind CSS** - Utility-first CSS framework
-- **shadcn/ui** - Beautifully designed components
-- **Lucide React** - Beautiful & consistent icons
+- **Tailwind CSS v4** - Utility-first CSS framework
+- **shadcn/ui** - Beautiful UI components
+- **Zod** - TypeScript-first schema validation
+- **Lucide React** - Beautiful icons
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 Cartify/
-├── backend/
-│   ├── main.py              # FastAPI application
-│   ├── requirements.txt     # Python dependencies
-│   └── .gitignore          # Backend gitignore
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   └── ui/         # shadcn/ui components
-│   │   ├── lib/
-│   │   │   └── utils.ts    # Utility functions
-│   │   ├── App.tsx         # Main application component
-│   │   ├── main.tsx        # Application entry point
-│   │   └── index.css       # Global styles with Tailwind
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── tailwind.config.js
-│   ├── vite.config.ts
-│   └── components.json     # shadcn/ui configuration
-└── README.md
+├── app/
+│   ├── api/                    # Backend API Route Handlers
+│   │   ├── health/            # Health check endpoint
+│   │   ├── items/             # Items CRUD endpoints
+│   │   └── route.ts           # Root API endpoint
+│   ├── components/ui/         # shadcn/ui components
+│   ├── lib/                   # Utilities and data models
+│   ├── layout.tsx            # Root layout
+│   ├── page.tsx              # Home page
+│   └── globals.css           # Global styles
+├── public/                    # Static assets
+├── next.config.ts            # Next.js configuration
+├── tailwind.config.ts        # Tailwind CSS configuration
+└── tsconfig.json             # TypeScript configuration
 ```
 
-## Getting Started
+## 🏃 Getting Started
 
 ### Prerequisites
-- Python 3.8 or higher
 - Node.js 18 or higher
-- npm or yarn
+- npm, yarn, or pnpm
 
-### Backend Setup
+### Installation
 
-1. Navigate to the backend directory:
+1. **Clone the repository** (or use your existing one)
 ```bash
-cd backend
+cd Cartify
 ```
 
-2. Create a virtual environment:
-```bash
-python -m venv venv
-```
-
-3. Activate the virtual environment:
-- On macOS/Linux:
-```bash
-source venv/bin/activate
-```
-- On Windows:
-```bash
-venv\Scripts\activate
-```
-
-4. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-5. Run the development server:
-```bash
-python main.py
-```
-
-The backend API will be available at `http://localhost:8000`
-
-#### API Endpoints
-
-- `GET /` - Welcome message
-- `GET /api/health` - Health check endpoint
-- `GET /api/items` - Get all items
-- `GET /api/items/{item_id}` - Get a specific item
-- `POST /api/items` - Create a new item
-- `PUT /api/items/{item_id}` - Update an item
-- `DELETE /api/items/{item_id}` - Delete an item
-
-API documentation is available at `http://localhost:8000/docs`
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-```bash
-cd frontend
-```
-
-2. Install dependencies:
+2. **Install dependencies**
 ```bash
 npm install
 ```
 
-3. Run the development server:
+3. **Run the development server**
 ```bash
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`
+4. **Open your browser**
+```
+http://localhost:3000
+```
 
-## Development
+## 📚 API Endpoints
 
-### Backend Development
+All API routes are located in `app/api/`:
 
-The FastAPI backend includes:
-- CORS middleware configured for local development
-- RESTful API with full CRUD operations
-- Pydantic models for request/response validation
-- Auto-generated API documentation (Swagger UI)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api` | Welcome message |
+| GET | `/api/health` | Health check |
+| GET | `/api/items` | Get all items |
+| POST | `/api/items` | Create a new item |
+| GET | `/api/items/[id]` | Get item by ID |
+| PUT | `/api/items/[id]` | Update item by ID |
+| DELETE | `/api/items/[id]` | Delete item by ID |
 
-To add new endpoints, edit `backend/main.py`.
+### Example Request
 
-### Frontend Development
+```typescript
+// Create an item
+const response = await fetch('/api/items', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    name: 'Sample Item',
+    description: 'A sample item',
+    price: 29.99
+  })
+})
+const item = await response.json()
+```
 
-The React frontend includes:
-- TypeScript for type safety
-- Tailwind CSS for styling
-- shadcn/ui components (Button, Card)
-- Path aliases configured (`@/*` → `src/*`)
-- Lucide React icons
+## 🎨 UI Components
 
-To add new shadcn/ui components:
+This project uses **shadcn/ui** components. Current components:
+- Button
+- Card (with Header, Content, Footer)
+
+### Adding More Components
+
 ```bash
 npx shadcn@latest add [component-name]
 ```
 
-For example:
+Popular components to add:
 ```bash
 npx shadcn@latest add input
 npx shadcn@latest add dialog
 npx shadcn@latest add table
+npx shadcn@latest add form
+npx shadcn@latest add select
+npx shadcn@latest add toast
 ```
 
-### Building for Production
+## 🔧 Development
 
-#### Backend
+### Project Scripts
+
 ```bash
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
+# Development
+npm run dev          # Start dev server with Turbopack
+
+# Production
+npm run build        # Build for production
+npm start            # Start production server
+
+# Code Quality
+npm run lint         # Run ESLint
 ```
 
-#### Frontend
+### Environment Variables
+
+Create a `.env.local` file for local environment variables:
+
+```env
+# Example environment variables
+DATABASE_URL=your_database_url
+NEXT_PUBLIC_API_URL=http://localhost:3000
+```
+
+## 🗄️ Data Storage
+
+Currently using **in-memory storage** for demo purposes. To add a database:
+
+### Option 1: Prisma + PostgreSQL
+
 ```bash
-cd frontend
-npm run build
+npm install prisma @prisma/client
+npx prisma init
 ```
 
-The built files will be in `frontend/dist/`.
-
-## Environment Variables
-
-### Backend
-Create a `.env` file in the `backend` directory (see `.env.example`):
-```env
-API_HOST=0.0.0.0
-API_PORT=8000
-DEBUG=True
+Then define your schema in `prisma/schema.prisma` and run:
+```bash
+npx prisma migrate dev
+npx prisma generate
 ```
 
-### Frontend
-Create a `.env` file in the `frontend` directory if needed:
-```env
-VITE_API_URL=http://localhost:8000
+### Option 2: MongoDB + Mongoose
+
+```bash
+npm install mongoose
 ```
 
-## Features
+## 🚀 Deployment
 
-✅ Modern Python backend with FastAPI  
-✅ Type-safe React frontend with TypeScript  
-✅ Beautiful UI components with shadcn/ui  
-✅ Utility-first styling with Tailwind CSS  
-✅ Fast development with Vite HMR  
-✅ CORS configured for local development  
-✅ Auto-generated API documentation  
-✅ Path aliases for clean imports  
-✅ Dark mode support built-in  
+### Deploy to Vercel (Recommended)
 
-## Next Steps
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
 
-- [ ] Add database integration (PostgreSQL, MongoDB, etc.)
-- [ ] Implement authentication (JWT, OAuth)
-- [ ] Add state management (Zustand, Redux)
-- [ ] Set up testing (Pytest, Vitest)
-- [ ] Configure CI/CD pipeline
-- [ ] Add Docker configuration
-- [ ] Implement logging and monitoring
+1. Push your code to GitHub
+2. Import your repository in Vercel
+3. Vercel will auto-detect Next.js and deploy
 
-## License
+### Other Platforms
+- **Netlify**: Supports Next.js
+- **Railway**: Full-stack deployment
+- **AWS Amplify**: Scalable hosting
+
+## 📖 Learn More
+
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Tailwind CSS v4](https://tailwindcss.com/docs)
+- [shadcn/ui](https://ui.shadcn.com/)
+- [Zod](https://zod.dev/)
+
+## 🎯 Features
+
+✅ **Unified full-stack app** - Frontend and backend in one codebase  
+✅ **Type-safe** - TypeScript everywhere  
+✅ **Modern UI** - Tailwind CSS v4 + shadcn/ui  
+✅ **API Routes** - Next.js Route Handlers for backend logic  
+✅ **Validation** - Zod schemas for data validation  
+✅ **Hot reload** - Fast refresh for both frontend and backend  
+✅ **Dark mode** - Built-in dark mode support  
+✅ **Responsive** - Mobile-first design  
+
+## 🛠️ Next Steps
+
+- [ ] Add database integration (Prisma, MongoDB)
+- [ ] Implement authentication (NextAuth.js)
+- [ ] Add form validation (React Hook Form + Zod)
+- [ ] Set up testing (Jest + React Testing Library)
+- [ ] Add more shadcn/ui components
+- [ ] Configure environment variables
+- [ ] Set up CI/CD pipeline
+
+## 📝 License
 
 MIT
 
-## Contributing
+## 🤝 Contributing
 
-Feel free to submit issues and enhancement requests!
+Contributions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+---
+
+**Built with ❤️ using Next.js 15**
