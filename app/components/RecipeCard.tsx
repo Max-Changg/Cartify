@@ -35,7 +35,7 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Image */}
-      <div className="relative aspect-video overflow-hidden bg-gray-100">
+      <div className="relative h-40 md:h-44 overflow-hidden bg-gray-100">
         <img
           src={recipe.image}
           alt={recipe.title}
@@ -80,13 +80,17 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
           {recipe.title}
         </h3>
         
-        <div className="flex items-center gap-4 text-sm text-gray-600">
-          <div className="flex items-center gap-1 transition-all duration-300 group-hover:text-gray-900">
-            <Clock className="w-4 h-4 transition-opacity duration-300" style={{ opacity: isVisible ? 1 : 0 }} />
-            <span>{recipe.prepTime}</span>
+        {/* Meta info */}
+        <div className="flex items-start gap-4 text-sm text-gray-600 min-h-[2.5rem]">
+          <div className="flex items-center gap-1">
+            <Clock className="w-4 h-4 flex-shrink-0" />
+            <span className="line-clamp-2 leading-snug">
+              {recipe.prepTime}
+            </span>
           </div>
-          <div className="flex items-center gap-1 transition-all duration-300 group-hover:text-gray-900">
-            <ChefHat className="w-4 h-4 transition-opacity duration-300" style={{ opacity: isVisible ? 1 : 0 }} />
+
+          <div className="flex items-center gap-1 whitespace-nowrap">
+            <ChefHat className="w-4 h-4 flex-shrink-0" />
             <span>{recipe.difficulty}</span>
           </div>
         </div>
@@ -96,7 +100,7 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
       <div
         className={`absolute inset-0 rounded-xl transition-all duration-300 pointer-events-none ${
           isHovered
-            ? 'shadow-2xl -translate-y-1'
+            ? 'shadow-2xl'
             : 'shadow-sm'
         }`}
       />
