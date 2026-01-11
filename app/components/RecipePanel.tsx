@@ -64,7 +64,7 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
               <p className="text-gray-400 text-sm">Speak or type your meal request to get started!</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 h-full">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full overflow-y-auto pr-2 items-start">
             {filteredRecipes.map((recipe, index) => (
               <RecipeCard
                 key={recipe.id}
