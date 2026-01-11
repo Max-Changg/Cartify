@@ -72,7 +72,9 @@ export function ShoppingCartPanel({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-[calc(100vh-120px)] flex flex-col">
+    <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 h-[calc(100vh-120px)] flex flex-col relative overflow-hidden">
+      {/* Decorative accent */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#10B981] via-[#14B8A6] to-[#10B981]"></div>
       {/* Header */}
       <div className="mb-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-1">
@@ -95,9 +97,14 @@ export function ShoppingCartPanel({
       <div className="flex-1 min-h-0 mb-4 overflow-hidden flex flex-col">
         <div className="space-y-2 overflow-y-auto pr-2 flex-1 min-h-0">
           {cartItems.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-sm">Your cart is empty</p>
-              <p className="text-gray-400 text-xs mt-2">Add items through the voice assistant</p>
+            <div className="text-center py-12 flex flex-col items-center">
+              <div className="w-20 h-20 bg-gradient-to-br from-[#10B981] to-[#14B8A6] rounded-full flex items-center justify-center mb-4 opacity-20">
+                <svg className="w-10 h-10 text-[#14B8A6]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <p className="text-gray-600 font-medium mb-2">Your cart is empty</p>
+              <p className="text-gray-400 text-sm">Add items through the voice assistant</p>
             </div>
           ) : (
             cartItems.map((item, index) => (
