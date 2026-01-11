@@ -38,8 +38,9 @@ export async function POST(request: NextRequest) {
       // Escape the file path for AppleScript
       const escapedPath = tempFile.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       
-      // AppleScript - use cat to read and paragraphs to preserve formatting
-      const appleScript = `set fileContent to do shell script "cat " & quoted form of "${escapedPath}"
+      // AppleScript - Use Python to convert to HTML for Notes
+      // This is the most reliable way to preserve formatting
+      const appleScript = `set fileContent to do shell script "python3 -c \\"import sys; lines = open('${escapedPath}', 'r').readlines(); html = ''.join('<div>' + line.rstrip('\\\\n') + '</div>' if line.strip() else '<div><br></div>' for line in lines); print(html)\\""
 
 tell application "Notes"
   activate
