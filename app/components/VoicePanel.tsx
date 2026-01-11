@@ -1,5 +1,5 @@
 import { Mic, Check, Loader2, Download, MapPin } from 'lucide-react';
-import type { CartItem as CartItemType, MicrophoneState } from '../App';
+import type { CartItem as CartItemType, MicrophoneState } from '../types';
 import { CartItem } from './ui/CartItem';
 
 interface VoicePanelProps {

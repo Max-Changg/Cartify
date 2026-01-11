@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Recipe } from '../App';
+import type { Recipe } from '../types';
 import { RecipeCard } from './RecipeCard';
 import { RecipeModal } from './RecipeModal';
 

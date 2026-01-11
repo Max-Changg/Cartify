@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Search } from 'lucide-react';
-import type { Ingredient } from '../../App';
+import type { Ingredient } from '../../types';
 import { IngredientCard } from './IngredientCard';
 
 interface IngredientsPanelProps {

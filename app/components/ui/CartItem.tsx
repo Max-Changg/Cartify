@@ -1,5 +1,5 @@
 import { Plus, Minus, X } from 'lucide-react';
-import type { CartItem as CartItemType } from '../../App';
+import type { CartItem as CartItemType } from '../../types';
 import { Switch } from '../Switch';
 
 interface CartItemProps {

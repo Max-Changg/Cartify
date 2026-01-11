@@ -1,5 +1,5 @@
 import { Clock, ChefHat, TrendingUp } from 'lucide-react';
-import type { Recipe } from '../App';
+import type { Recipe } from '../types';
 import { useState } from 'react';
 
 interface RecipeCardProps {

@@ -1,5 +1,5 @@
 import { Plus, Check, Store } from 'lucide-react';
-import type { Ingredient } from '../../App';
+import type { Ingredient } from '../../types';
 
 interface IngredientCardProps {
   ingredient: Ingredient;

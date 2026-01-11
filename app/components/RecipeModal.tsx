@@ -1,5 +1,5 @@
 import { X, Clock, ChefHat, TrendingUp } from 'lucide-react';
-import type { Recipe } from '../App';
+import type { Recipe } from '../types';
 import { useEffect } from 'react';
 
 interface RecipeModalProps {
