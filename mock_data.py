@@ -6,7 +6,7 @@ import csv
 # -----------------------------
 # CONFIG
 # -----------------------------
-NUM_ITEMS = 300
+NUM_ITEMS = 600
 OUTPUT_JSON = "amazon_fresh_mock.json"
 OUTPUT_CSV = "amazon_fresh_mock.csv"
 
