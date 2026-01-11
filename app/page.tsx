@@ -1470,10 +1470,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     setMicState('processing');
     
     const audioBuffer = audioQueueRef.current.shift()!;
-    const hasMoreChunks = audioQueueRef.current.length > 0;
-    const isLastChunk = !hasMoreChunks && !isAgentSpeakingRef.current;
-    
-    console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)', isLastChunk ? '[LAST CHUNK]' : '');
+    console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)');
     
     const source = audioContextRef.current!.createBufferSource();
     source.buffer = audioBuffer;
@@ -1637,23 +1634,34 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     setCartItems(cartItems.filter(item => item.id !== id));
   };
 
-  const handleExportList = () => {
+  const handleExportList = async () => {
     if (cartItems.length === 0) {
       setError('No items to export');
       return;
     }
 
-    let exportContent = "🛒 Your Shopping List:\n\n";
+    // Format exactly like the txt file (without emojis to avoid encoding issues)
+    let exportContent = "Your Shopping List:\n";
+    exportContent += "\n";
+    exportContent += "\n";
+    
     cartItems.forEach(item => {
       if (item.enabled) {
         exportContent += `- ${item.name} (${item.quantity}) - $${(item.price * item.quantity).toFixed(2)}\n`;
+        exportContent += "\n";
       }
     });
-    exportContent += `\nTotal: $${totalCost.toFixed(2)}\n\n`;
+    
+    exportContent += `Total: $${totalCost.toFixed(2)}\n`;
+    exportContent += "\n";
+    exportContent += "\n";
 
     if (recipes.length > 0) {
-      exportContent += "🍳 Recipe Suggestions:\n\n";
-      recipes.forEach(recipe => {
+      exportContent += "Recipe Suggestions:\n";
+      exportContent += "\n";
+      exportContent += "\n";
+      
+      recipes.forEach((recipe) => {
         exportContent += `--- ${recipe.title} ---\n`;
         exportContent += `Time: ${recipe.prepTime}, Difficulty: ${recipe.difficulty}\n`;
         exportContent += `Match: ${recipe.matchPercentage}%\n`;
@@ -1662,18 +1670,49 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
           exportContent += `  - ${ing}\n`;
         });
         exportContent += "\n";
+        exportContent += "\n";
       });
     }
 
-    const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'cartify_shopping_list.txt';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Try to export to Notes app
+    try {
+      setIsProcessing(true);
+      const response = await fetch('/api/export-to-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: exportContent,
+          title: 'Cartify Shopping List'
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        // Success - note created in Notes app
+        setError(null);
+        console.log('✅ Shopping list exported to Notes app');
+        return; // Don't download file
+      } else {
+        // Log the error for debugging
+        console.error('❌ Notes export failed:', result.error || result.details);
+        throw new Error(result.error || 'Notes export failed');
+      }
+    } catch (error: any) {
+      // Fallback to file download if Notes app is not available or on non-macOS
+      console.log('📝 Falling back to file download:', error);
+      const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'cartify_shopping_list.txt';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleQuickPurchase = async () => {
@@ -1766,7 +1805,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6">
         {/* Removed all notification banners - feedback is now inline and contextual */}
         <div className="min-h-[calc(100vh-120px)]">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-stretch ">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 ">
 
             {/* Left Column - Voice Agent */}
             <div className="order-1 lg:order-1">
@@ -1779,12 +1818,12 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
             </div>
 
             {/* Center Column - Recipes */}
-            <div className="order-2 lg:order-2 h-full">
+            <div className="order-2 lg:order-2">
               <RecipePanel recipes={recipes} isGenerating={isGeneratingRecipes} />
             </div>
 
             {/* Right Column - Shopping Cart */}
-            <div className="order-3 lg:order-3 h-full">
+            <div className="order-3 lg:order-3">
               <ShoppingCartPanel
                 cartItems={cartItems}
                 totalCost={totalCost}
