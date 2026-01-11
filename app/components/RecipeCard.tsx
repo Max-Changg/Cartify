@@ -23,13 +23,13 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
 
   return (
     <div
-      className={`group relative bg-white rounded-xl overflow-hidden cursor-pointer transition-all duration-300 border border-gray-200 ${
+      className={`group relative bg-white rounded-xl overflow-hidden cursor-pointer transition-all duration-500 border ${
         isVisible ? 'opacity-100' : 'opacity-0'
-      } ${isHovered ? 'z-50' : 'z-10'}`}
+      } ${isHovered ? 'z-50 border-emerald-200 shadow-2xl shadow-emerald-500/10' : 'z-10 border-gray-200 shadow-md'}`}
       style={{
         transform: isVisible 
-          ? (isHovered ? 'translateY(-8px)' : 'translateY(0)')
-          : 'translateY(20px)',
+          ? (isHovered ? 'translateY(-8px) scale(1.02)' : 'translateY(0) scale(1)')
+          : 'translateY(20px) scale(0.95)',
         transition: 'all 0.5s cubic-bezier(0.4, 0.0, 0.2, 1)',
       }}
       onClick={onClick}
@@ -48,11 +48,11 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
         />
         
         {/* Gradient overlay for text readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-emerald-900/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         
         {/* Match Percentage Badge */}
         <div
-          className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full flex items-center gap-1 transition-all duration-300"
+          className="absolute top-3 right-3 bg-gradient-to-br from-emerald-50 to-teal-50 backdrop-blur-sm px-3 py-1.5 rounded-full flex items-center gap-1 transition-all duration-300 shadow-lg border border-emerald-200/50"
           style={{
             animationName: recipe.matchPercentage === 100 ? 'scale-in' : 'none',
             animationDuration: recipe.matchPercentage === 100 ? '0.4s' : undefined,
@@ -62,14 +62,14 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
             opacity: isVisible ? 1 : 0,
           }}
         >
-          <TrendingUp className="w-3 h-3 text-[#14B8A6]" />
-          <span className="text-sm font-semibold text-gray-900">{recipe.matchPercentage}%</span>
+          <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="text-sm font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">{recipe.matchPercentage}%</span>
         </div>
 
         {/* Hover Overlay */}
         {isHovered && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-300">
-            <button className="bg-white text-gray-900 px-6 py-2 rounded-full font-semibold hover:bg-gray-100 transition-all duration-300 transform hover:scale-105">
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent flex items-center justify-center transition-opacity duration-300">
+            <button className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-6 py-2.5 rounded-full font-semibold hover:from-emerald-600 hover:to-teal-600 transition-all duration-300 transform hover:scale-105 shadow-xl button-shine-effect">
               View Recipe
             </button>
           </div>
@@ -78,7 +78,11 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
 
       {/* Content */}
       <div className="p-4">
-        <h3 className="font-semibold text-gray-900 mb-3 line-clamp-1 transition-colors duration-300 group-hover:text-[#14B8A6]">
+        <h3 className={`font-semibold mb-3 line-clamp-1 transition-all duration-300 ${
+          isHovered 
+            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent' 
+            : 'text-gray-900'
+        }`}>
           {recipe.title}
         </h3>
         
