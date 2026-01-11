@@ -70,6 +70,36 @@ Or visit in browser: http://localhost:3000/api/weee/test
 
 ## 📝 Example Usage Patterns
 
+### Add Item to Cart (Built-in Function)
+
+```typescript
+import { addItemToWeeeCart } from '@/lib/weee-browser'
+
+export async function POST(request: Request) {
+  const { itemName } = await request.json()
+  
+  const result = await addItemToWeeeCart(itemName)
+  
+  return NextResponse.json(result)
+}
+```
+
+**Or use the API endpoint:**
+
+```bash
+# Add an item to cart
+curl -X POST http://localhost:3000/api/weee/add-to-cart \
+  -H "Content-Type: application/json" \
+  -d '{"itemName":"apple"}'
+```
+
+**Features:**
+- ✅ Searches for the item
+- ✅ Finds first in-stock product
+- ✅ Mouse movement with random jitter (bot evasion)
+- ✅ Handles variant selection popups
+- ✅ Detailed console logging
+
 ### Basic Navigation
 
 ```typescript
@@ -113,6 +143,25 @@ export async function GET() {
 ```
 
 ### Adding to Cart
+
+```typescript
+import { addItemToWeeeCart } from '@/lib/weee-browser'
+
+export async function POST(request: Request) {
+  const { items } = await request.json()
+  
+  const results = []
+  
+  for (const itemName of items) {
+    const result = await addItemToWeeeCart(itemName)
+    results.push(result)
+  }
+  
+  return NextResponse.json({ results })
+}
+```
+
+**Manual approach with custom logic:**
 
 ```typescript
 import { getWeeePage } from '@/lib/weee-browser'
