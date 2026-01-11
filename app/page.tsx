@@ -76,11 +76,12 @@ export default function HomePage() {
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const agentWsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioQueueRef = useRef<AudioBuffer[]>([]);
   const isPlayingRef = useRef<boolean>(false);
   const healthGoalsRef = useRef<string>('');
   const cuisinePreferencesRef = useRef<string>('');
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
+  const isAgentSpeakingRef = useRef<boolean>(false);
+  const audioChunkBufferRef = useRef<Uint8Array[]>([]);
 
   useEffect(() => {
     // Check backend health
@@ -355,9 +356,13 @@ export default function HomePage() {
 
       // Handle Welcome event - configure agent after connection opens
       connection.on(AgentEvents.Welcome, async () => {
-        console.log('✅ Welcome to Deepgram Voice Agent!');
+        console.log('');
+        console.log('='.repeat(60));
+        console.log('✅ WELCOME TO DEEPGRAM VOICE AGENT');
+        console.log('='.repeat(60));
         
-        // Configure the agent as per documentation
+        // Configure the agent as per Deepgram documentation
+        // https://developers.deepgram.com/docs/voice-agent-audio-playback
         connection.configure({
           audio: {
             input: {
@@ -367,7 +372,7 @@ export default function HomePage() {
             output: {
               encoding: "linear16",
               sample_rate: 16000,
-              container: "none",
+              container: "none",  // Per docs: TTS WebSocket doesn't support containerized formats
             },
           },
           agent: {
@@ -413,7 +418,7 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
             audio: {
               sampleRate: 16000,
               channelCount: 1,
-              echoCancellation: true,
+              echoCancellation: true,  // Per docs: helps prevent agent from hearing itself
               noiseSuppression: true,
               autoGainControl: true,
             }
@@ -421,10 +426,10 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
 
           console.log('🎤 Microphone access granted');
 
-          // Use Web Audio API to capture PCM16 audio
+          // Use Web Audio API to capture PCM16 audio at 16kHz (standard for voice)
           const micAudioContext = new AudioContext({ sampleRate: 16000 });
           const source = micAudioContext.createMediaStreamSource(stream);
-          const processor = micAudioContext.createScriptProcessor(4096, 1, 1);
+          const processor = micAudioContext.createScriptProcessor(2048, 1, 1);
 
           source.connect(processor);
           processor.connect(micAudioContext.destination);
@@ -468,10 +473,34 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         console.log('🔌 Connection opened');
       });
 
-      // Handle audio from agent
+      // Handle settings applied - CRITICAL for audio quality verification
+      connection.on(AgentEvents.SettingsApplied, (data: any) => {
+        console.log('✅ Settings Applied:', data);
+        console.log('  - Audio input:', data?.audio?.input);
+        console.log('  - Audio output:', data?.audio?.output);
+      });
+
+      // Handle audio from agent - accumulate chunks for smooth playback
       connection.on(AgentEvents.Audio, (data: any) => {
-        console.log('🔊 Audio chunk received');
-        playAgentAudio(data);
+        const size = data?.byteLength || data?.length || 0;
+        console.log('🔊 Audio chunk received:', size, 'bytes');
+        
+        // Convert to Uint8Array for accumulation
+        let chunkData: Uint8Array;
+        if (data instanceof Uint8Array) {
+          chunkData = data;
+        } else if (data instanceof ArrayBuffer) {
+          chunkData = new Uint8Array(data);
+        } else if (data?.buffer) {
+          chunkData = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        } else {
+          console.warn('⚠️ Unknown audio data type:', typeof data);
+          return;
+        }
+        
+        // Accumulate chunks
+        audioChunkBufferRef.current.push(chunkData);
+        console.log('  - Accumulated chunks:', audioChunkBufferRef.current.length);
       });
 
       // Handle conversation text
@@ -507,17 +536,55 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         }
       });
 
-      // Handle user started speaking
+      // Handle user started speaking - clear audio
       connection.on(AgentEvents.UserStartedSpeaking, () => {
-        console.log('🎤 User started speaking');
+        console.log('🎤 User started speaking - interrupting agent');
         // Clear any pending audio when user interrupts
-        audioQueueRef.current = [];
+        audioChunkBufferRef.current = [];
+        isAgentSpeakingRef.current = false;
+        isPlayingRef.current = false;
+        setMicState('listening');
       });
 
-      // Handle agent audio done
-      connection.on(AgentEvents.AgentAudioDone, () => {
-        console.log('✅ Agent finished speaking');
-        setMicState('listening');
+      // Handle agent started speaking
+      connection.on(AgentEvents.AgentStartedSpeaking, () => {
+        console.log('🗣️ Agent started speaking - preparing to accumulate audio');
+        setMicState('processing');
+        isAgentSpeakingRef.current = true;
+        // Clear previous audio buffer
+        audioChunkBufferRef.current = [];
+      });
+
+      // Handle agent audio done - Combine and play all accumulated chunks
+      connection.on(AgentEvents.AgentAudioDone, async () => {
+        console.log('✅ Agent finished speaking - combining', audioChunkBufferRef.current.length, 'chunks');
+        isAgentSpeakingRef.current = false;
+        
+        if (audioChunkBufferRef.current.length === 0) {
+          console.warn('⚠️ No audio chunks to play!');
+          setMicState('listening');
+          return;
+        }
+        
+        // Calculate total size
+        const totalSize = audioChunkBufferRef.current.reduce((sum, chunk) => sum + chunk.length, 0);
+        console.log('  - Total PCM data:', totalSize, 'bytes (', (totalSize / 32000).toFixed(2), 'seconds at 16kHz)');
+        
+        // Combine all chunks into one buffer
+        const combinedPcm = new Uint8Array(totalSize);
+        let offset = 0;
+        for (const chunk of audioChunkBufferRef.current) {
+          combinedPcm.set(chunk, offset);
+          offset += chunk.length;
+        }
+        
+        console.log('🎵 Combined all chunks into single buffer, preparing playback...');
+        
+        // Play the complete audio (smooth, no choppiness!)
+        await playAgentAudio(combinedPcm.buffer);
+        
+        // Clear buffer for next speech
+        audioChunkBufferRef.current = [];
       });
 
       // Handle errors
@@ -558,84 +625,92 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
   const playAgentAudio = async (audioData: ArrayBuffer | Uint8Array | unknown) => {
     if (!audioContextRef.current) return;
 
+    let pcmData: ArrayBuffer | undefined;
+    
     try {
-      // Handle different data formats from SDK
-      let arrayBuffer: ArrayBuffer;
+      // Handle different data formats
       if (audioData instanceof ArrayBuffer) {
-        arrayBuffer = audioData;
+        pcmData = audioData;
       } else if (audioData instanceof Uint8Array) {
-        arrayBuffer = audioData.buffer.slice(audioData.byteOffset, audioData.byteOffset + audioData.byteLength) as ArrayBuffer;
+        pcmData = audioData.buffer.slice(audioData.byteOffset, audioData.byteOffset + audioData.byteLength) as ArrayBuffer;
       } else if (typeof audioData === 'object' && audioData !== null && 'buffer' in audioData) {
-        // Handle Buffer-like objects
         const bufferLike = audioData as { buffer: ArrayBuffer; byteOffset: number; byteLength: number };
-        arrayBuffer = bufferLike.buffer.slice(bufferLike.byteOffset, bufferLike.byteOffset + bufferLike.byteLength) as ArrayBuffer;
+        pcmData = bufferLike.buffer.slice(bufferLike.byteOffset, bufferLike.byteOffset + bufferLike.byteLength) as ArrayBuffer;
       } else {
         console.warn('Unknown audio data format:', typeof audioData);
         return;
       }
 
-      // Convert PCM16 to AudioBuffer
-      const pcm16 = new Int16Array(arrayBuffer);
-      const float32 = new Float32Array(pcm16.length);
-      
-      // Convert Int16 to Float32 (-1 to 1 range)
-      for (let i = 0; i < pcm16.length; i++) {
-        float32[i] = pcm16[i] / 32768.0;
-      }
+      console.log('🎵 Creating WAV file with', pcmData.byteLength, 'bytes of PCM data');
 
-      // Create audio buffer with 16000 sample rate (matches Deepgram output)
-      // AudioContext will automatically resample to its native rate (usually 48000)
-      const audioBuffer = audioContextRef.current.createBuffer(
-        1, // mono
-        float32.length,
-        16000 // sample rate from Deepgram agent output
-      );
+      // Per Deepgram docs: Prepend WAV header for browser playback
+      // https://developers.deepgram.com/docs/voice-agent-audio-playback
+      const wavHeader = new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, // "RIFF"
+        0x00, 0x00, 0x00, 0x00, // Placeholder for file size
+        0x57, 0x41, 0x56, 0x45, // "WAVE"
+        0x66, 0x6d, 0x74, 0x20, // "fmt "
+        0x10, 0x00, 0x00, 0x00, // Chunk size (16)
+        0x01, 0x00,             // Audio format (1 for PCM)
+        0x01, 0x00,             // Number of channels (1 for mono)
+        0x80, 0x3e, 0x00, 0x00, // Sample rate (16000 Hz)
+        0x00, 0x7d, 0x00, 0x00, // Byte rate (32000 = 16000*1*2)
+        0x02, 0x00,             // Block align (2)
+        0x10, 0x00,             // Bits per sample (16)
+        0x64, 0x61, 0x74, 0x61, // "data"
+        0x00, 0x00, 0x00, 0x00  // Placeholder for data size
+      ]);
+
+      // Concatenate WAV header with PCM data
+      const wavBuffer = new Uint8Array(wavHeader.length + pcmData.byteLength);
+      wavBuffer.set(wavHeader, 0);
+      wavBuffer.set(new Uint8Array(pcmData), wavHeader.length);
+
+      // Update file size in header
+      const fileSize = wavBuffer.length - 8;
+      wavBuffer[4] = fileSize & 0xff;
+      wavBuffer[5] = (fileSize >> 8) & 0xff;
+      wavBuffer[6] = (fileSize >> 16) & 0xff;
+      wavBuffer[7] = (fileSize >> 24) & 0xff;
+
+      // Update data chunk size
+      const dataSize = pcmData.byteLength;
+      wavBuffer[40] = dataSize & 0xff;
+      wavBuffer[41] = (dataSize >> 8) & 0xff;
+      wavBuffer[42] = (dataSize >> 16) & 0xff;
+      wavBuffer[43] = (dataSize >> 24) & 0xff;
+
+      console.log('🎵 Decoding WAV file with browser decoder...');
       
-      audioBuffer.getChannelData(0).set(float32);
+      // Decode the complete WAV file using browser's native decoder
+      const audioBuffer = await audioContextRef.current.decodeAudioData(wavBuffer.buffer);
       
-      // Add to queue and play
-      audioQueueRef.current.push(audioBuffer);
+      console.log('✅ Successfully decoded:', audioBuffer.duration.toFixed(2), 'seconds at', audioBuffer.sampleRate, 'Hz');
+      console.log('▶️  Starting smooth playback...');
       
-      if (!isPlayingRef.current) {
-        playNextAudioChunk();
-      }
+      // Play immediately (single smooth audio)
+      isPlayingRef.current = true;
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContextRef.current.destination);
+      
+      source.onended = () => {
+        console.log('✅ Audio playback finished');
+        isPlayingRef.current = false;
+        setMicState('listening');
+      };
+      
+      source.start();
+      
     } catch (err) {
-      console.error('Error playing audio:', err);
-    }
-  };
-
-  const playNextAudioChunk = () => {
-    if (audioQueueRef.current.length === 0) {
+      console.error('❌ Error playing audio:', err);
+      console.error('   PCM data size:', pcmData?.byteLength);
       isPlayingRef.current = false;
-      return;
+      setMicState('listening');
     }
-
-    isPlayingRef.current = true;
-    const audioBuffer = audioQueueRef.current.shift()!;
-    
-    const source = audioContextRef.current!.createBufferSource();
-    source.buffer = audioBuffer;
-    
-    // Add a gain node for smooth volume control and prevent clicks
-    const gainNode = audioContextRef.current!.createGain();
-    source.connect(gainNode);
-    gainNode.connect(audioContextRef.current!.destination);
-    
-    // Add very short fade-in/out to prevent clicks (5ms)
-    const now = audioContextRef.current!.currentTime;
-    const fadeDuration = 0.005; // 5ms
-    
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(1, now + fadeDuration);
-    gainNode.gain.setValueAtTime(1, now + audioBuffer.duration - fadeDuration);
-    gainNode.gain.linearRampToValueAtTime(0, now + audioBuffer.duration);
-    
-    source.onended = () => {
-      playNextAudioChunk();
-    };
-    
-    source.start();
   };
+
+  // Removed playNextAudioChunk - now playing accumulated audio directly
 
   const stopRecording = () => {
     console.log('Stopping recording...');
@@ -670,8 +745,8 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
       mediaRecorderRef.current = null;
     }
 
-    // Clear audio queue
-    audioQueueRef.current = [];
+    // Clear audio buffer
+    audioChunkBufferRef.current = [];
     isPlayingRef.current = false;
 
     setMicState('idle');
