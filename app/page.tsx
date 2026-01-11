@@ -4,10 +4,10 @@ import { AgentEvents, createClient } from '@deepgram/sdk';
 import { Mic } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { RecipePanel } from './components/RecipePanel';
+import { ShoppingCartPanel } from './components/ShoppingCartPanel';
 import { Header } from './components/ui/Header';
 import { VoicePanel } from './components/VoicePanel';
-import { ShoppingCartPanel } from './components/ShoppingCartPanel';
-import type { CartItem, MicrophoneState, Recipe, ConversationMessage } from './types';
+import type { CartItem, ConversationMessage, MicrophoneState, Recipe } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -70,6 +70,7 @@ export default function HomePage() {
   const [cuisinePreferences, setCuisinePreferences] = useState('');
   const [excludedItems, setExcludedItems] = useState<string[]>([]);
   const [conversationTranscript, setConversationTranscript] = useState<string>('');
+  const [hasGeneratedInitialList, setHasGeneratedInitialList] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -86,6 +87,10 @@ export default function HomePage() {
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const playbackTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isPausedRef = useRef<boolean>(false);
+  const currentRecipesRef = useRef<any[]>([]);
+  const currentShoppingListRef = useRef<CartItem[]>([]);
+  const conversationMessagesRef = useRef<ConversationMessage[]>([]);
+  const lastUserRequestRef = useRef<string>('');
 
   useEffect(() => {
     // Check backend health
@@ -198,6 +203,189 @@ export default function HomePage() {
     await playAgentAudio(combinedPcm.buffer);
   };
 
+  const refineShoppingList = async (userRequest: string) => {
+    if (isGeneratingRecipes) {
+      console.log('⚠️ Already generating, skipping refinement');
+      return;
+    }
+    
+    setIsGeneratingRecipes(true);
+    console.log('🔄 Refining shopping list based on:', userRequest);
+    console.log('🔄 Current shopping list:', currentShoppingListRef.current);
+    console.log('🔄 Current recipes:', currentRecipesRef.current);
+
+    try {
+      // Call the new refine_shopping_list action
+      const response = await fetch('/api/ai-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'refine_shopping_list',
+          userRequest: userRequest,
+          currentShoppingList: currentShoppingListRef.current,
+          currentRecipes: currentRecipesRef.current,
+          healthGoals: healthGoalsRef.current,
+          cuisinePreferences: cuisinePreferencesRef.current,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ API error:', errorData);
+        throw new Error(errorData.detail || 'Failed to refine shopping list');
+      }
+
+      const { shopping_list } = await response.json();
+      console.log('✅ Refined shopping list:', shopping_list);
+
+      // Convert to CartItem format and update cart
+      const newCartItems: CartItem[] = (Array.isArray(shopping_list) ? shopping_list : []).map((item: any, index: number) => ({
+        id: `cart-${Date.now()}-${index}`,
+        name: item.item || item.name || 'Unknown Item',
+        quantity: 1,
+        price: item.estimatedPrice || item.price || 0,
+        enabled: true,
+        brand: item.brand,
+      }));
+
+      if (newCartItems.length > 0) {
+        setCartItems(newCartItems);
+        currentShoppingListRef.current = newCartItems;
+        console.log('✅ Shopping cart updated with', newCartItems.length, 'items');
+      }
+
+      setIsGeneratingRecipes(false);
+    } catch (error: any) {
+      console.error('❌ Error refining shopping list:', error);
+      setError('Failed to refine shopping list: ' + error.message);
+      setIsGeneratingRecipes(false);
+    }
+  };
+
+  const regenerateRecipes = async (userRequest: string) => {
+    if (isGeneratingRecipes) return;
+    
+    setIsGeneratingRecipes(true);
+    console.log('🔄 Regenerating recipes based on:', userRequest);
+
+    try {
+      // Call the regenerate_recipes action
+      const recipesResponse = await fetch('/api/ai-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'regenerate_recipes',
+          userRequest: userRequest,
+          currentRecipes: currentRecipesRef.current,
+          healthGoals: healthGoalsRef.current,
+          cuisinePreferences: cuisinePreferencesRef.current,
+          excludedItems: excludedItems,
+        }),
+      });
+
+      if (!recipesResponse.ok) {
+        throw new Error('Failed to regenerate recipes');
+      }
+
+      const { recipes } = await recipesResponse.json();
+      console.log('✅ Regenerated recipes:', recipes);
+
+      // Convert to Recipe format expected by UI (same logic as before)
+      const formattedRecipes: Recipe[] = recipes.map((r: any, index: number) => {
+        const ingredientStrings = (r.ingredients || []).map((ing: any) => {
+          if (typeof ing === 'string') {
+            return ing;
+          }
+          const amount = ing.amount || '1';
+          const unit = ing.unit || '';
+          const name = ing.name || ing.item || '';
+          return `${amount} ${unit} ${name}`.trim();
+        });
+        
+        const recipeName = (r.name || r.title || '').toLowerCase();
+        let category = 'dinner';
+        
+        if (r.mealType && ['breakfast', 'lunch', 'dinner', 'dessert'].includes(r.mealType.toLowerCase())) {
+          category = r.mealType.toLowerCase();
+        } else if (recipeName.includes('breakfast') || recipeName.includes('pancake') || recipeName.includes('waffle') || 
+            recipeName.includes('oatmeal') || recipeName.includes('cereal') || recipeName.includes('toast') ||
+            recipeName.includes('egg') || recipeName.includes('bacon') || recipeName.includes('smoothie') ||
+            recipeName.includes('muffin') || recipeName.includes('bagel')) {
+          category = 'breakfast';
+        } else if (recipeName.includes('lunch') || recipeName.includes('sandwich') || recipeName.includes('wrap') ||
+                   recipeName.includes('salad') || recipeName.includes('soup') || recipeName.includes('bowl')) {
+          category = 'lunch';
+        } else if (recipeName.includes('dessert') || recipeName.includes('cake') || recipeName.includes('cookie') ||
+                   recipeName.includes('pie') || recipeName.includes('ice cream') || recipeName.includes('pudding') ||
+                   recipeName.includes('brownie') || recipeName.includes('tart')) {
+          category = 'dessert';
+        } else if (r.cuisine) {
+          const cuisineLower = r.cuisine.toLowerCase();
+          if (['breakfast', 'lunch', 'dinner', 'dessert'].includes(cuisineLower)) {
+            category = cuisineLower;
+          }
+        }
+        
+        return {
+          id: `recipe-${Date.now()}-${index}`,
+          title: r.name || r.title,
+          image: r.image || `https://source.unsplash.com/800x600/?${encodeURIComponent((r.name || r.title) + ' food')}`,
+          prepTime: r.prepTime || '30 mins',
+          difficulty: 'Medium',
+          matchPercentage: 100,
+          category: category,
+          ingredients: ingredientStrings,
+          steps: [
+            `Prepare ingredients: ${ingredientStrings.slice(0, 3).join(', ')}`,
+            'Follow the recipe instructions',
+            `Cook for ${r.prepTime || '30 mins'}`,
+            `Serves ${r.servings || 4} people`,
+            'Enjoy!'
+          ],
+        };
+      });
+
+      setRecipes(formattedRecipes);
+      currentRecipesRef.current = recipes;
+
+      // Also regenerate shopping list with new recipes
+      const shoppingResponse = await fetch('/api/ai-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_shopping_list',
+          currentRecipes: recipes,
+        }),
+      });
+
+      if (shoppingResponse.ok) {
+        const responseData = await shoppingResponse.json();
+        const shopping_list = responseData.shopping_list || [];
+        
+        const newCartItems: CartItem[] = (Array.isArray(shopping_list) ? shopping_list : []).map((item: any, index: number) => ({
+          id: `cart-${Date.now()}-${index}`,
+          name: item.item || item.name || 'Unknown Item',
+          quantity: 1,
+          price: item.estimatedPrice || item.price || 0,
+          enabled: true,
+          brand: item.brand,
+        }));
+
+        if (newCartItems.length > 0) {
+          setCartItems(newCartItems);
+          currentShoppingListRef.current = newCartItems;
+          console.log('✅ Shopping cart updated with', newCartItems.length, 'items');
+        }
+      }
+
+      setIsGeneratingRecipes(false);
+    } catch (error: any) {
+      console.error('❌ Error regenerating recipes:', error);
+      setError('Failed to regenerate recipes: ' + error.message);
+      setIsGeneratingRecipes(false);
+    }
+  };
+
   const generateRecipesAndShoppingList = async () => {
     if (isGeneratingRecipes) return; // Prevent duplicate calls
     
@@ -225,6 +413,9 @@ export default function HomePage() {
 
       const { recipes } = await recipesResponse.json();
       console.log('✅ Generated recipes:', recipes);
+      
+      // Store raw recipes for future refinement
+      currentRecipesRef.current = recipes;
 
       // Convert to Recipe format expected by UI
       const formattedRecipes: Recipe[] = recipes.map((r: any, index: number) => {
@@ -323,6 +514,8 @@ export default function HomePage() {
 
       if (newCartItems.length > 0) {
         setCartItems(newCartItems);
+        currentShoppingListRef.current = newCartItems;
+        setHasGeneratedInitialList(true);
         console.log('✅ Shopping cart populated with', newCartItems.length, 'items');
       } else {
         console.warn('⚠️ No items to add to cart');
@@ -413,15 +606,33 @@ export default function HomePage() {
               },
               prompt: `You are a virtual assistant for helping build a shopping list based on health goals and food preferences.
 
-Your task is to:
+INITIAL CONVERSATION:
 1. First ask: "What are your health and fitness goals?" and listen for their response
 2. Then ask: "What types of food do you like? Any cuisines, dishes, or ingredients in particular?" and listen for their response
-3. Once you have BOTH pieces of information, say EXACTLY this phrase: "Perfect! Let me generate some recipes for you."
-4. After that, briefly describe the recipes you'll be generating based on their preferences
+3. Once you have BOTH pieces of information, say EXACTLY: "Perfect! Let me generate some recipes for you."
+
+FEEDBACK LOOP (after generation or modification):
+4. ALWAYS ask for feedback after the list updates: "How does the shopping list look? Would you like me to add or remove anything?"
+5. Listen for their response:
+   - If they want changes → acknowledge and say the appropriate trigger phrase (see below)
+   - If they say "everything looks good" / "looks great" / "that's perfect" / "I'm happy with it" → say EXACTLY: "Great! When you're ready, click the purchase button and I'll fill in your cart for you."
+   - If unclear → ask a clarifying question
+
+REFINEMENT TRIGGERS:
+- If user wants to modify shopping list (e.g., "add more protein", "remove soy sauce", "I already have X") → say EXACTLY: "Let me update your shopping list." THEN after update, ask again: "How does the list look now? Any other changes?"
+- If user wants different recipes (e.g., "show me different recipes", "I don't like these") → say EXACTLY: "Let me find different recipes for you." THEN after update, ask again: "How does everything look? Would you like any changes?"
+
+FINAL CONFIRMATION:
+- Only when user explicitly indicates they're happy with the list (e.g., "looks good", "perfect", "I'm done"), say the purchase button message
+- DO NOT move to purchase until user confirms they're satisfied
 
 Keep responses short (1-2 sentences). Be warm and conversational.
 
-IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes for you." when you have both their health goals AND cuisine preferences. This triggers the recipe generation system.`,
+CRITICAL TRIGGER PHRASES (say these EXACTLY):
+- "Perfect! Let me generate some recipes for you." = Initial generation
+- "Let me update your shopping list." = Modify shopping list
+- "Let me find different recipes for you." = Regenerate recipes
+- "Great! When you're ready, click the purchase button and I'll fill in your cart for you." = User is done, ready for checkout`,
             },
             speak: {
               provider: {
@@ -560,12 +771,19 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
           timestamp: new Date(),
         };
         
+        // Update ref immediately for trigger detection
+        conversationMessagesRef.current = [...conversationMessagesRef.current, newMessage];
+        
         setConversationMessages(prev => [...prev, newMessage]);
         setTranscription(`${role === 'user' ? 'You' : 'Agent'}: ${content}`);
         setConversationTranscript(prev => prev + `\n${role === 'user' ? 'You' : 'Agent'}: ${content}`);
 
         // Track user responses to extract preferences
         if (data.role === 'user') {
+          // Store the last user request for refinement
+          lastUserRequestRef.current = content;
+          console.log('📝 Stored user request:', content);
+          
           // Check if this is likely a health goals response (first question)
           if (!healthGoalsRef.current && content.length > 10) {
             console.log('📝 Captured health goals:', content);
@@ -578,13 +796,43 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
           }
         }
 
-        // Detect trigger phrase from agent
-        if (data.role === 'assistant' && content.toLowerCase().includes('let me generate some recipes')) {
-          console.log('🎯 Trigger detected! Generating recipes...');
-          // Wait a moment for the audio to finish, then generate
-          setTimeout(() => {
-            generateRecipesAndShoppingList();
-          }, 1000);
+        // Detect trigger phrases from agent
+        if (data.role === 'assistant') {
+          const contentLower = content.toLowerCase();
+          
+          // Initial generation trigger
+          if (contentLower.includes('let me generate some recipes')) {
+            console.log('🎯 Initial generation trigger detected!');
+            setTimeout(() => {
+              generateRecipesAndShoppingList();
+            }, 1000);
+          }
+          // Shopping list refinement trigger
+          else if (contentLower.includes('let me update your shopping list')) {
+            console.log('🎯 Shopping list refinement trigger detected!');
+            const userRequest = lastUserRequestRef.current;
+            console.log('🎯 Using user request:', userRequest);
+            setTimeout(() => {
+              if (userRequest) {
+                refineShoppingList(userRequest);
+              } else {
+                console.error('❌ No user request found for refinement');
+              }
+            }, 1000);
+          }
+          // Recipe regeneration trigger
+          else if (contentLower.includes('let me find different recipes')) {
+            console.log('🎯 Recipe regeneration trigger detected!');
+            const userRequest = lastUserRequestRef.current;
+            console.log('🎯 Using user request:', userRequest);
+            setTimeout(() => {
+              if (userRequest) {
+                regenerateRecipes(userRequest);
+              } else {
+                console.error('❌ No user request found for regeneration');
+              }
+            }, 1000);
+          }
         }
       });
 
@@ -761,7 +1009,10 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
     setMicState('processing');
     
     const audioBuffer = audioQueueRef.current.shift()!;
-    console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)');
+    const hasMoreChunks = audioQueueRef.current.length > 0;
+    const isLastChunk = !hasMoreChunks && !isAgentSpeakingRef.current;
+    
+    console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)', isLastChunk ? '[LAST CHUNK]' : '');
     
     const source = audioContextRef.current!.createBufferSource();
     source.buffer = audioBuffer;
@@ -772,16 +1023,27 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
     gainNode.connect(audioContextRef.current!.destination);
     
     const now = audioContextRef.current!.currentTime;
-    const fadeTime = 0.03; // 30ms fade for ultra-smooth transitions
+    const fadeTime = 0.005; // 5ms fade - minimal but prevents clicks
     
-    // Fade in at start
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
+    // Only fade in if not the first chunk (prevents cutting beginning)
+    // For first chunk, start at full volume
+    if (isPlayingRef.current) {
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
+    } else {
+      gainNode.gain.setValueAtTime(1, now);
+    }
     
-    // Fade out at end
-    const endTime = now + audioBuffer.duration;
-    gainNode.gain.setValueAtTime(1, endTime - fadeTime);
-    gainNode.gain.linearRampToValueAtTime(0, endTime);
+    // Only fade out if there are more chunks coming (NOT on last chunk!)
+    // This prevents cutting off the end of speech
+    if (!isLastChunk && hasMoreChunks) {
+      const endTime = now + audioBuffer.duration;
+      gainNode.gain.setValueAtTime(1, endTime - fadeTime);
+      gainNode.gain.linearRampToValueAtTime(0.8, endTime); // Gentle fade to 80%, not silence
+    } else {
+      // Last chunk: maintain full volume to the end
+      gainNode.gain.setValueAtTime(1, now);
+    }
     
     source.onended = () => {
       // Play next buffer immediately when this one ends
@@ -872,6 +1134,8 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
     setIsPaused(false);
     isPausedRef.current = false;
     setConversationMessages([]); // Clear conversation when fully stopped
+    conversationMessagesRef.current = []; // Clear ref too
+    lastUserRequestRef.current = ''; // Clear last request
     console.log('Recording stopped completely');
   };
 
@@ -1035,7 +1299,7 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
     .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB] pb-24 lg:pb-0">
+    <div className="min-h-screen bg-gradient-to-br from-[#F0FDF4] via-[#F9FAFB] to-[#ECFDF5] pb-24 lg:pb-0">
       <Header cartItemCount={cartItems.filter(item => item.enabled).length} totalCost={totalCost} />
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6">
