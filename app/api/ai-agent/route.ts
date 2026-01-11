@@ -150,7 +150,14 @@ async function generateShoppingList(recipes: any[]) {
   const prompt = `Consolidate these ingredients into a shopping list with quantities:
 ${allIngredients.join(', ')}
 
-Return ONLY a JSON array with this structure, no other text:
+IMPORTANT: Return ONLY the top 10 MOST ESSENTIAL items. Prioritize:
+1. Main proteins and produce
+2. Items needed across multiple recipes
+3. Core ingredients that are not common pantry staples
+
+The user can add more items later through voice commands.
+
+Return ONLY a JSON array with this structure (MAX 10 items), no other text:
 [
   {
     "item": "Item name",
@@ -187,7 +194,12 @@ Return ONLY a JSON array with this structure, no other text:
     const data = await response.json();
     const textContent = data.candidates[0]?.content?.parts[0]?.text || "";
     const cleanedText = textContent.replace(/```json|```/g, "").trim();
-    const shoppingList = JSON.parse(cleanedText);
+    let shoppingList = JSON.parse(cleanedText);
+    
+    // Ensure we have at most 10 items
+    if (shoppingList.length > 10) {
+      shoppingList = shoppingList.slice(0, 10);
+    }
     
     return NextResponse.json({ shopping_list: shoppingList });
   } catch (err: any) {
