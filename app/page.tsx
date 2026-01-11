@@ -1792,7 +1792,6 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
         // Success - note created in Notes app
         setError(null);
         console.log('✅ Shopping list exported to Notes app');
-        alert('✅ Shopping list exported to Notes app successfully!');
         return; // Don't download file
       } else {
         // Log the error for debugging
