@@ -4,10 +4,10 @@ import { AgentEvents, createClient } from '@deepgram/sdk';
 import { Mic } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { RecipePanel } from './components/RecipePanel';
+import { ShoppingCartPanel } from './components/ShoppingCartPanel';
 import { Header } from './components/ui/Header';
 import { VoicePanel } from './components/VoicePanel';
-import { ShoppingCartPanel } from './components/ShoppingCartPanel';
-import type { CartItem, MicrophoneState, Recipe, ConversationMessage } from './types';
+import type { CartItem, ConversationMessage, MicrophoneState, Recipe } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
