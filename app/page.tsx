@@ -1285,7 +1285,7 @@ CRITICAL TRIGGER PHRASES (say these EXACTLY):
     .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB] pb-24 lg:pb-0">
+    <div className="min-h-screen bg-gradient-to-br from-[#F0FDF4] via-[#F9FAFB] to-[#ECFDF5] pb-24 lg:pb-0">
       <Header cartItemCount={cartItems.filter(item => item.enabled).length} totalCost={totalCost} />
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6">

@@ -33,7 +33,7 @@ export function VoicePanel({
   }, [conversationMessages]);
 
   return (
-    <div className="bg-gradient-to-br from-[#14B8A6] via-[#14B8A6] to-[#10B981] rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-[calc(100vh-120px)] flex flex-col">
+    <div className="bg-gradient-to-br from-[#14B8A6] via-[#14B8A6] to-[#10B981] rounded-xl shadow-lg border border-[#10B981]/30 p-6 h-[calc(100vh-120px)] flex flex-col">
       {/* Top Section - Header */}
       <div className="mb-4 flex-shrink-0">
         <div className="flex items-center gap-3 mb-2">

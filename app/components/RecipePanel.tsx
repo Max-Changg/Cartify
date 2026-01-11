@@ -20,7 +20,9 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-[calc(100vh-120px)] flex flex-col">
+      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 h-[calc(100vh-120px)] flex flex-col relative overflow-hidden">
+        {/* Decorative accent */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#10B981] via-[#14B8A6] to-[#10B981]"></div>
         {/* Header */}
         <div className="mb-4 flex-shrink-0">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Recipes You Can Make</h2>
@@ -52,8 +54,14 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
               ))}
             </div>
           ) : filteredRecipes.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-sm">No recipes yet. Speak or type your meal request to get started!</p>
+            <div className="text-center py-12 flex flex-col items-center">
+              <div className="w-20 h-20 bg-gradient-to-br from-[#10B981] to-[#14B8A6] rounded-full flex items-center justify-center mb-4 opacity-20">
+                <svg className="w-10 h-10 text-[#14B8A6]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+              <p className="text-gray-600 font-medium mb-2">No recipes yet</p>
+              <p className="text-gray-400 text-sm">Speak or type your meal request to get started!</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 h-full">
