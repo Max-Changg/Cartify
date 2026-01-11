@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { AgentEvents, createClient } from '@deepgram/sdk';
 import { Mic } from 'lucide-react';
-import { Header } from './components/ui/Header';
-import { VoicePanel } from './components/VoicePanel';
+import { useEffect, useRef, useState } from 'react';
 import { RecipePanel } from './components/RecipePanel';
+import { Header } from './components/ui/Header';
 import { IngredientsPanel } from './components/ui/IngredientsPanel';
-import type { CartItem, Recipe, Ingredient, MicrophoneState } from './types';
-import { createClient, AgentEvents } from '@deepgram/sdk';
+import { VoicePanel } from './components/VoicePanel';
+import type { CartItem, Ingredient, MicrophoneState, Recipe } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -589,8 +589,8 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
 
       // Handle errors
       connection.on(AgentEvents.Error, (err: any) => {
-        console.error('❌ Agent error:', err);
-        setError(err.message || 'Agent error occurred');
+        // console.error('❌ Agent error:', err);
+        // setError(err.message || 'Agent error occurred');
         setMicState('idle');
       });
 
