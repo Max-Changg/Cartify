@@ -1491,10 +1491,6 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     const now = audioContextRef.current!.currentTime;
     const fadeTime = 0.1;
     
-    // Determine if this is the last chunk and if there are more chunks
-    const isLastChunk = audioQueueRef.current.length === 0;
-    const hasMoreChunks = audioQueueRef.current.length > 0;
-    
     // Subtle fade in at the very start to prevent pops
     gainNode.gain.setValueAtTime(0.98, now);
     gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
