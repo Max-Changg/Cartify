@@ -7,9 +7,10 @@ const categories = ['all', 'breakfast', 'lunch', 'dinner', 'dessert'];
 
 interface RecipePanelProps {
   recipes: Recipe[];
+  isGenerating?: boolean;
 }
 
-export function RecipePanel({ recipes }: RecipePanelProps) {
+export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps) {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
@@ -26,13 +27,13 @@ export function RecipePanel({ recipes }: RecipePanelProps) {
           
           {/* Filter Chips */}
           <div className="flex flex-wrap gap-2">
-            {categories.map(category => (
+            {categories.map((category) => (
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${
+                className={`px-4 py-2 rounded-full font-medium transition-all duration-300 ${
                   selectedCategory === category
-                    ? 'bg-[#10B981] text-white shadow-md'
+                    ? 'bg-[#14B8A6] text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
@@ -43,17 +44,24 @@ export function RecipePanel({ recipes }: RecipePanelProps) {
         </div>
 
         {/* Recipe Grid */}
-        {filteredRecipes.length === 0 ? (
+        {isGenerating && recipes.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-gray-100 rounded-xl aspect-video animate-shimmer" />
+            ))}
+          </div>
+        ) : filteredRecipes.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-400 text-sm">No recipes yet. Speak or type your meal request to get started!</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[700px] overflow-y-auto pr-2">
-            {filteredRecipes.map(recipe => (
+            {filteredRecipes.map((recipe, index) => (
               <RecipeCard
                 key={recipe.id}
                 recipe={recipe}
                 onClick={() => setSelectedRecipe(recipe)}
+                index={index}
               />
             ))}
           </div>

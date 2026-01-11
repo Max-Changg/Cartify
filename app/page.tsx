@@ -5,9 +5,9 @@ import { Mic } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { RecipePanel } from './components/RecipePanel';
 import { Header } from './components/ui/Header';
-import { IngredientsPanel } from './components/ui/IngredientsPanel';
 import { VoicePanel } from './components/VoicePanel';
-import type { CartItem, Ingredient, MicrophoneState, Recipe } from './types';
+import { ShoppingCartPanel } from './components/ShoppingCartPanel';
+import type { CartItem, MicrophoneState, Recipe, ConversationMessage } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -58,11 +58,12 @@ export default function HomePage() {
   const [transcription, setTranscription] = useState('');
   const [timer, setTimer] = useState(30);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backendStatus, setBackendStatus] = useState<string>('disconnected');
-  const [selectedIngredients, setSelectedIngredients] = useState<Set<string>>(new Set());
+  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [isConversationActive, setIsConversationActive] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   
   // AI Agent state
   const [healthGoals, setHealthGoals] = useState('');
@@ -82,6 +83,9 @@ export default function HomePage() {
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
   const isAgentSpeakingRef = useRef<boolean>(false);
   const audioChunkBufferRef = useRef<Uint8Array[]>([]);
+  const audioQueueRef = useRef<AudioBuffer[]>([]);
+  const playbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isPausedRef = useRef<boolean>(false);
 
   useEffect(() => {
     // Check backend health
@@ -103,13 +107,6 @@ export default function HomePage() {
       }
     };
   }, []);
-
-  // Regenerate recipes when selected ingredients change
-  useEffect(() => {
-    if (selectedIngredients.size > 0 && ingredients.length > 0) {
-      regenerateRecipes();
-    }
-  }, [selectedIngredients]);
 
   // Convert backend shopping items to frontend cart items
   const convertToCartItems = (items: BackendShoppingItem[]): CartItem[] => {
@@ -179,53 +176,26 @@ export default function HomePage() {
     });
   };
 
-  // Convert backend shopping items to frontend ingredients
-  const convertToIngredients = (items: BackendShoppingItem[]): Ingredient[] => {
-    return items.map((item, idx) => ({
-      id: item.id,
-      name: item.name,
-      brand: 'Generic',
-      price: item.estimated_price || 0,
-      image: `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&sig=${idx}`,
-      available: ['Weee!', 'Local Store']
-    }));
-  };
-
-  // Regenerate recipes based on selected ingredients
-  const regenerateRecipes = async () => {
-    if (selectedIngredients.size === 0) return;
-
-    try {
-      setIsProcessing(true);
-      const selectedIngredientNames = Array.from(selectedIngredients)
-        .map(id => ingredients.find(ing => ing.id === id)?.name)
-        .filter(Boolean) as string[];
-
-      if (selectedIngredientNames.length === 0) return;
-
-      const response = await fetch('/api/process-request', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: `Generate recipes using: ${selectedIngredientNames.join(', ')}`,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to regenerate recipes');
-      }
-
-      const data: ShoppingListResponse = await response.json();
-      const newRecipes = convertToRecipes(data.recipes);
-      setRecipes(newRecipes);
-    } catch (err: any) {
-      console.error('Error regenerating recipes:', err);
-      setError('Failed to regenerate recipes');
-    } finally {
-      setIsProcessing(false);
+  const flushAudioBuffer = async () => {
+    if (audioChunkBufferRef.current.length === 0) return;
+    
+    // Calculate total size of accumulated chunks
+    const totalSize = audioChunkBufferRef.current.reduce((sum, chunk) => sum + chunk.length, 0);
+    console.log('  - Flushing', audioChunkBufferRef.current.length, 'chunks (', totalSize, 'bytes)');
+    
+    // Combine chunks into single buffer
+    const combinedPcm = new Uint8Array(totalSize);
+    let offset = 0;
+    for (const chunk of audioChunkBufferRef.current) {
+      combinedPcm.set(chunk, offset);
+      offset += chunk.length;
     }
+    
+    // Clear the buffer (we've taken these chunks)
+    audioChunkBufferRef.current = [];
+    
+    // Create WAV file and decode
+    await playAgentAudio(combinedPcm.buffer);
   };
 
   const generateRecipesAndShoppingList = async () => {
@@ -257,20 +227,64 @@ export default function HomePage() {
       console.log('✅ Generated recipes:', recipes);
 
       // Convert to Recipe format expected by UI
-      const formattedRecipes: Recipe[] = recipes.map((r: any, index: number) => ({
-        id: `recipe-${Date.now()}-${index}`,
-        name: r.name,
-        cuisine: r.cuisine,
-        servings: r.servings || 4,
-        prepTime: r.prepTime || '30 mins',
-        healthBenefits: r.healthBenefits || '',
-        ingredients: r.ingredients.map((ing: string, idx: number) => ({
-          id: `ing-${index}-${idx}`,
-          name: ing,
-          amount: '1x',
-          category: 'other' as const,
-        })),
-      }));
+      const formattedRecipes: Recipe[] = recipes.map((r: any, index: number) => {
+        // Handle ingredients - can be array of strings or objects
+        const ingredientStrings = (r.ingredients || []).map((ing: any) => {
+          if (typeof ing === 'string') {
+            return ing;
+          }
+          // Handle object format
+          const amount = ing.amount || '1';
+          const unit = ing.unit || '';
+          const name = ing.name || ing.item || '';
+          return `${amount} ${unit} ${name}`.trim();
+        });
+        
+        // Determine category based on mealType from API, recipe name, or cuisine
+        const recipeName = (r.name || r.title || '').toLowerCase();
+        let category = 'dinner'; // default
+        
+        // First, check if API provided mealType
+        if (r.mealType && ['breakfast', 'lunch', 'dinner', 'dessert'].includes(r.mealType.toLowerCase())) {
+          category = r.mealType.toLowerCase();
+        } else if (recipeName.includes('breakfast') || recipeName.includes('pancake') || recipeName.includes('waffle') || 
+            recipeName.includes('oatmeal') || recipeName.includes('cereal') || recipeName.includes('toast') ||
+            recipeName.includes('egg') || recipeName.includes('bacon') || recipeName.includes('smoothie') ||
+            recipeName.includes('muffin') || recipeName.includes('bagel')) {
+          category = 'breakfast';
+        } else if (recipeName.includes('lunch') || recipeName.includes('sandwich') || recipeName.includes('wrap') ||
+                   recipeName.includes('salad') || recipeName.includes('soup') || recipeName.includes('bowl')) {
+          category = 'lunch';
+        } else if (recipeName.includes('dessert') || recipeName.includes('cake') || recipeName.includes('cookie') ||
+                   recipeName.includes('pie') || recipeName.includes('ice cream') || recipeName.includes('pudding') ||
+                   recipeName.includes('brownie') || recipeName.includes('tart')) {
+          category = 'dessert';
+        } else if (r.cuisine) {
+          // Use cuisine as fallback if it matches a category
+          const cuisineLower = r.cuisine.toLowerCase();
+          if (['breakfast', 'lunch', 'dinner', 'dessert'].includes(cuisineLower)) {
+            category = cuisineLower;
+          }
+        }
+        
+        return {
+          id: `recipe-${Date.now()}-${index}`,
+          title: r.name || r.title, // RecipePanel expects 'title'
+          image: r.image || `https://source.unsplash.com/800x600/?${encodeURIComponent((r.name || r.title) + ' food')}`,
+          prepTime: r.prepTime || '30 mins',
+          difficulty: 'Medium', // Default difficulty
+          matchPercentage: 100, // Default match
+          category: category,
+          ingredients: ingredientStrings,
+          steps: [
+            `Prepare ingredients: ${ingredientStrings.slice(0, 3).join(', ')}`,
+            'Follow the recipe instructions',
+            `Cook for ${r.prepTime || '30 mins'}`,
+            `Serves ${r.servings || 4} people`,
+            'Enjoy!'
+          ],
+        };
+      });
 
       setRecipes(formattedRecipes);
 
@@ -288,23 +302,32 @@ export default function HomePage() {
         throw new Error('Failed to generate shopping list');
       }
 
-      const { shopping_list } = await shoppingResponse.json();
+      const responseData = await shoppingResponse.json();
+      const shopping_list = responseData.shopping_list || [];
+      
+      if (!Array.isArray(shopping_list)) {
+        console.warn('Shopping list is not an array:', responseData);
+      }
+      
       console.log('✅ Generated shopping list:', shopping_list);
 
       // Convert to CartItem format and add to cart
-      const newCartItems: CartItem[] = shopping_list.map((item: any, index: number) => ({
+      const newCartItems: CartItem[] = (Array.isArray(shopping_list) ? shopping_list : []).map((item: any, index: number) => ({
         id: `cart-${Date.now()}-${index}`,
-        name: item.item,
-        amount: item.quantity,
-        price: item.estimatedPrice || 0,
-        imageUrl: '', // No image for now
-        category: item.category || 'other',
-        quantity: 1,
+        name: item.item || item.name || 'Unknown Item',
+        quantity: 1, // CartItem uses 'quantity'
+        price: item.estimatedPrice || item.price || 0,
         enabled: true,
+        brand: item.brand,
       }));
 
-      setCartItems(newCartItems);
-      console.log('✅ Shopping cart populated with', newCartItems.length, 'items');
+      if (newCartItems.length > 0) {
+        setCartItems(newCartItems);
+        console.log('✅ Shopping cart populated with', newCartItems.length, 'items');
+      } else {
+        console.warn('⚠️ No items to add to cart');
+        setError('No items were generated for the shopping list. Please try again.');
+      }
 
       setIsGeneratingRecipes(false);
     } catch (error: any) {
@@ -453,7 +476,12 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
             stop: () => {
               processor.disconnect();
               source.disconnect();
-              micAudioContext.close();
+              // Check if AudioContext is not already closed before closing
+              if (micAudioContext.state !== 'closed') {
+                micAudioContext.close().catch(err => {
+                  console.warn('Error closing mic AudioContext:', err);
+                });
+              }
               stream.getTracks().forEach(track => track.stop());
             },
             stream,
@@ -480,8 +508,11 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         console.log('  - Audio output:', data?.audio?.output);
       });
 
-      // Handle audio from agent - accumulate chunks for smooth playback
+      // Handle audio from agent - streaming approach for low latency
       connection.on(AgentEvents.Audio, (data: any) => {
+        // Don't process audio if paused
+        if (isPausedRef.current) return;
+        
         const size = data?.byteLength || data?.length || 0;
         console.log('🔊 Audio chunk received:', size, 'bytes');
         
@@ -501,16 +532,37 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         // Accumulate chunks
         audioChunkBufferRef.current.push(chunkData);
         console.log('  - Accumulated chunks:', audioChunkBufferRef.current.length);
+        
+        // Start playing after accumulating 15 chunks (~1 second of audio)
+        // Larger buffer = ultra-smooth playback
+        if (audioChunkBufferRef.current.length === 25) {
+          console.log('🎵 Initial buffer filled (25 chunks), flushing to playback...');
+          flushAudioBuffer();
+        }
+        
+        // Continue flushing every 30 chunks for smooth, continuous segments
+        if (audioChunkBufferRef.current.length % 30 === 0 && audioChunkBufferRef.current.length > 15) {
+          console.log('🎵 Periodic flush (30 chunks accumulated)');
+          flushAudioBuffer();
+        }
       });
 
       // Handle conversation text
       connection.on(AgentEvents.ConversationText, (data: any) => {
         console.log('💬 Conversation:', data);
-        const role = data.role === 'user' ? 'You' : 'Agent';
+        const role = data.role === 'user' ? 'user' : 'assistant';
         const content = data.content;
         
-        setTranscription(`${role}: ${content}`);
-        setConversationTranscript(prev => prev + `\n${role}: ${content}`);
+        // Add message to conversation array
+        const newMessage: ConversationMessage = {
+          speaker: role,
+          text: content,
+          timestamp: new Date(),
+        };
+        
+        setConversationMessages(prev => [...prev, newMessage]);
+        setTranscription(`${role === 'user' ? 'You' : 'Agent'}: ${content}`);
+        setConversationTranscript(prev => prev + `\n${role === 'user' ? 'You' : 'Agent'}: ${content}`);
 
         // Track user responses to extract preferences
         if (data.role === 'user') {
@@ -536,55 +588,50 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         }
       });
 
-      // Handle user started speaking - clear audio
+      // Handle user started speaking - clear all audio
       connection.on(AgentEvents.UserStartedSpeaking, () => {
         console.log('🎤 User started speaking - interrupting agent');
-        // Clear any pending audio when user interrupts
+        
+        // Don't process if paused
+        if (isPausedRef.current) return;
+        
+        // Clear ALL audio buffers immediately
         audioChunkBufferRef.current = [];
+        audioQueueRef.current = [];
         isAgentSpeakingRef.current = false;
         isPlayingRef.current = false;
+        
         setMicState('listening');
+        setIsConversationActive(true); // Conversation is now active
       });
 
       // Handle agent started speaking
       connection.on(AgentEvents.AgentStartedSpeaking, () => {
         console.log('🗣️ Agent started speaking - preparing to accumulate audio');
+        
+        // Don't process if paused
+        if (isPausedRef.current) return;
+        
         setMicState('processing');
         isAgentSpeakingRef.current = true;
         // Clear previous audio buffer
         audioChunkBufferRef.current = [];
       });
 
-      // Handle agent audio done - Combine and play all accumulated chunks
+      // Handle agent audio done - Flush any remaining chunks
       connection.on(AgentEvents.AgentAudioDone, async () => {
-        console.log('✅ Agent finished speaking - combining', audioChunkBufferRef.current.length, 'chunks');
+        console.log('✅ Agent finished speaking');
         isAgentSpeakingRef.current = false;
         
-        if (audioChunkBufferRef.current.length === 0) {
-          console.warn('⚠️ No audio chunks to play!');
-          setMicState('listening');
-          return;
+        // Flush any remaining buffered chunks
+        if (audioChunkBufferRef.current.length > 0) {
+          console.log('🎵 Final flush:', audioChunkBufferRef.current.length, 'remaining chunks');
+          await flushAudioBuffer();
+        } else {
+          console.log('  - No remaining chunks to flush');
         }
         
-        // Calculate total size
-        const totalSize = audioChunkBufferRef.current.reduce((sum, chunk) => sum + chunk.length, 0);
-        console.log('  - Total PCM data:', totalSize, 'bytes (', (totalSize / 32000).toFixed(2), 'seconds at 16kHz)');
-        
-        // Combine all chunks into one buffer
-        const combinedPcm = new Uint8Array(totalSize);
-        let offset = 0;
-        for (const chunk of audioChunkBufferRef.current) {
-          combinedPcm.set(chunk, offset);
-          offset += chunk.length;
-        }
-        
-        console.log('🎵 Combined all chunks into single buffer, preparing playback...');
-        
-        // Play the complete audio (smooth, no choppiness!)
-        await playAgentAudio(combinedPcm.buffer);
-        
-        // Clear buffer for next speech
-        audioChunkBufferRef.current = [];
+        // Will return to listening when playback queue finishes
       });
 
       // Handle errors
@@ -641,8 +688,6 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         return;
       }
 
-      console.log('🎵 Creating WAV file with', pcmData.byteLength, 'bytes of PCM data');
-
       // Per Deepgram docs: Prepend WAV header for browser playback
       // https://developers.deepgram.com/docs/voice-agent-audio-playback
       const wavHeader = new Uint8Array([
@@ -679,41 +724,111 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
       wavBuffer[41] = (dataSize >> 8) & 0xff;
       wavBuffer[42] = (dataSize >> 16) & 0xff;
       wavBuffer[43] = (dataSize >> 24) & 0xff;
-
-      console.log('🎵 Decoding WAV file with browser decoder...');
       
-      // Decode the complete WAV file using browser's native decoder
+      // Decode the WAV file using browser's native decoder
       const audioBuffer = await audioContextRef.current.decodeAudioData(wavBuffer.buffer);
       
-      console.log('✅ Successfully decoded:', audioBuffer.duration.toFixed(2), 'seconds at', audioBuffer.sampleRate, 'Hz');
-      console.log('▶️  Starting smooth playback...');
+      console.log('  - Decoded:', audioBuffer.duration.toFixed(2), 's, adding to queue');
       
-      // Play immediately (single smooth audio)
-      isPlayingRef.current = true;
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
+      // Add to playback queue
+      audioQueueRef.current.push(audioBuffer);
       
-      source.onended = () => {
-        console.log('✅ Audio playback finished');
-        isPlayingRef.current = false;
-        setMicState('listening');
-      };
-      
-      source.start();
+      // Start playing if not already playing
+      if (!isPlayingRef.current) {
+        playNextAudioChunk();
+      }
       
     } catch (err) {
-      console.error('❌ Error playing audio:', err);
+      console.error('❌ Error preparing audio:', err);
       console.error('   PCM data size:', pcmData?.byteLength);
-      isPlayingRef.current = false;
-      setMicState('listening');
     }
   };
 
-  // Removed playNextAudioChunk - now playing accumulated audio directly
+  const playNextAudioChunk = () => {
+    if (audioQueueRef.current.length === 0) {
+      console.log('✅ Playback queue empty');
+      isPlayingRef.current = false;
+      
+      // Only return to listening if agent is done speaking
+      if (!isAgentSpeakingRef.current) {
+        setMicState('listening');
+        setIsConversationActive(true); // Keep conversation active
+      }
+      return;
+    }
+
+    isPlayingRef.current = true;
+    setMicState('processing');
+    
+    const audioBuffer = audioQueueRef.current.shift()!;
+    console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)');
+    
+    const source = audioContextRef.current!.createBufferSource();
+    source.buffer = audioBuffer;
+    
+    // Add smooth fade-in/out to prevent clicks between segments
+    const gainNode = audioContextRef.current!.createGain();
+    source.connect(gainNode);
+    gainNode.connect(audioContextRef.current!.destination);
+    
+    const now = audioContextRef.current!.currentTime;
+    const fadeTime = 0.03; // 30ms fade for ultra-smooth transitions
+    
+    // Fade in at start
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
+    
+    // Fade out at end
+    const endTime = now + audioBuffer.duration;
+    gainNode.gain.setValueAtTime(1, endTime - fadeTime);
+    gainNode.gain.linearRampToValueAtTime(0, endTime);
+    
+    source.onended = () => {
+      // Play next buffer immediately when this one ends
+      playNextAudioChunk();
+    };
+    
+    source.start();
+  };
+
+  const pauseConversation = () => {
+    console.log('Pausing conversation...');
+    
+    // Stop AI audio playback immediately
+    if (audioContextRef.current && isPlayingRef.current) {
+      // Stop all audio sources
+      audioQueueRef.current = [];
+      isPlayingRef.current = false;
+    }
+    
+    // Clear audio buffers to stop any pending audio
+    audioChunkBufferRef.current = [];
+    audioQueueRef.current = [];
+    isAgentSpeakingRef.current = false;
+    
+    // Stop microphone input (but keep connection open for resume)
+    if (mediaRecorderRef.current) {
+      try {
+        if (typeof mediaRecorderRef.current.stop === 'function') {
+          mediaRecorderRef.current.stop();
+        }
+        if (mediaRecorderRef.current.stream) {
+          mediaRecorderRef.current.stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+        }
+      } catch (err) {
+        console.error('Error stopping recorder:', err);
+      }
+      // Don't set to null - we'll reuse it on resume
+    }
+
+    setMicState('paused');
+    setIsPaused(true);
+    isPausedRef.current = true;
+    console.log('Conversation paused - messages remain visible');
+  };
 
   const stopRecording = () => {
-    console.log('Stopping recording...');
+    console.log('Stopping recording completely...');
     
     // Close Deepgram SDK connection
     if (agentWsRef.current) {
@@ -745,45 +860,38 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
       mediaRecorderRef.current = null;
     }
 
-    // Clear audio buffer
+    // Clear all audio buffers
     audioChunkBufferRef.current = [];
+    audioQueueRef.current = [];
     isPlayingRef.current = false;
+    isAgentSpeakingRef.current = false;
 
     setMicState('idle');
     setTranscription('');
-    console.log('Recording stopped');
+    setIsConversationActive(false);
+    setIsPaused(false);
+    isPausedRef.current = false;
+    setConversationMessages([]); // Clear conversation when fully stopped
+    console.log('Recording stopped completely');
   };
 
   const handleMicClick = () => {
     if (micState === 'idle') {
+      // Start conversation
       startRecording();
-    } else if (micState === 'listening' || micState === 'processing') {
-      stopRecording();
-    }
-  };
-
-  const addToCart = (ingredient: Ingredient) => {
-    const existingItem = cartItems.find(item => item.id === ingredient.id);
-
-    if (existingItem) {
-      setCartItems(cartItems.map(item =>
-        item.id === ingredient.id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      ));
+      setIsConversationActive(true);
+      setIsPaused(false);
+    } else if (micState === 'paused') {
+      // Resume conversation
+      console.log('Resuming conversation...');
+      setIsPaused(false);
+      isPausedRef.current = false;
+      // Restart recording
+      startRecording();
     } else {
-      setCartItems([...cartItems, {
-        id: ingredient.id,
-        name: ingredient.name,
-        quantity: 1,
-        price: ingredient.price,
-        enabled: true,
-        brand: ingredient.brand
-      }]);
+      // Pause conversation (keep messages visible)
+      pauseConversation();
     }
-
-    // Add to selected ingredients
-    setSelectedIngredients(prev => new Set(prev).add(ingredient.id));
   };
 
   const updateQuantity = (id: string, delta: number) => {
@@ -802,23 +910,6 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
 
   const removeItem = (id: string) => {
     setCartItems(cartItems.filter(item => item.id !== id));
-    setSelectedIngredients(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(id);
-      return newSet;
-    });
-  };
-
-  const toggleIngredient = (id: string) => {
-    setSelectedIngredients(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
   };
 
   const handleExportList = () => {
@@ -882,17 +973,27 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
 
       console.log('🛒 Starting Weee! purchase for items:', itemNames);
 
-      // Call the batch add API endpoint
+      // Call the batch add API endpoint with timeout
+      // Note: This can take a while as it opens a browser and adds items one by one
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+      
       const response = await fetch('/api/cart/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ items: itemNames }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error('Failed to add items to Weee! cart');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}: Failed to add items to Weee! cart`;
+        console.error('❌ API Error:', errorMessage, errorData);
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
@@ -900,17 +1001,30 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
       console.log('✅ Weee! cart result:', result);
 
       // Show success message
-      if (result.summary.successful > 0) {
+      if (result.summary && result.summary.successful > 0) {
         alert(
           `✅ Successfully added ${result.summary.successful} of ${result.summary.total} items to Weee! cart!\n\n` +
           `The browser window has opened showing your cart. You can now review and checkout.`
         );
+      } else if (result.success === false) {
+        // API returned success: false
+        const errorMsg = result.error || result.message || 'Failed to add items to Weee! cart';
+        setError(errorMsg);
       } else {
         setError('Failed to add any items to Weee! cart. Please try again.');
       }
     } catch (err: any) {
       console.error('❌ Error during Weee! purchase:', err);
-      setError(err.message || 'Failed to process Weee! purchase. Please try again.');
+      
+      let errorMessage = 'Failed to process Weee! purchase. Please try again.';
+      
+      if (err.name === 'AbortError') {
+        errorMessage = 'Request timed out. The Weee! automation is taking longer than expected. Please try again with fewer items.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -925,61 +1039,35 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
       <Header cartItemCount={cartItems.filter(item => item.enabled).length} totalCost={totalCost} />
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6">
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
-            <p className="text-sm text-red-600">{error}</p>
-            <button 
-              onClick={() => setError(null)}
-              className="mt-2 text-xs text-red-500 hover:text-red-700"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+        {/* Removed all notification banners - feedback is now inline and contextual */}
 
-        {isGeneratingRecipes && (
-          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl animate-pulse">
-            <p className="text-sm text-blue-600">🧪 Generating personalized recipes and shopping list...</p>
-          </div>
-        )}
-
-        {backendStatus === 'disconnected' && (
-          <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-            <p className="text-sm text-yellow-600">⚠️ Backend not connected. Please start the backend server.</p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-10 gap-4 sm:gap-6">
-          {/* Left Panel - Voice Input & Shopping Cart */}
-          <div className="lg:col-span-3 order-1 lg:order-1">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          {/* Left Column - Voice Agent */}
+          <div className="order-1 lg:order-1">
             <VoicePanel
-              cartItems={cartItems}
               micState={micState}
-              transcription={transcription}
-              timer={timer}
-              totalCost={totalCost}
               onMicClick={handleMicClick}
+              conversationMessages={conversationMessages}
+              isConversationActive={isConversationActive || conversationMessages.length > 0}
+            />
+          </div>
+
+          {/* Center Column - Recipes */}
+          <div className="order-2 lg:order-2">
+            <RecipePanel recipes={recipes} isGenerating={isGeneratingRecipes} />
+          </div>
+
+          {/* Right Column - Shopping Cart */}
+          <div className="order-3 lg:order-3">
+            <ShoppingCartPanel
+              cartItems={cartItems}
+              totalCost={totalCost}
               onUpdateQuantity={updateQuantity}
               onToggleItem={toggleItem}
               onRemoveItem={removeItem}
               onExportList={handleExportList}
               onQuickPurchase={handleQuickPurchase}
               isProcessing={isProcessing}
-            />
-          </div>
-
-          {/* Center Panel - Recipe Suggestions */}
-          <div className="lg:col-span-4 order-2 lg:order-2">
-            <RecipePanel recipes={recipes} />
-          </div>
-
-          {/* Right Panel - Ingredient Details */}
-          <div className="lg:col-span-3 order-3 lg:order-3">
-            <IngredientsPanel 
-              ingredients={ingredients} 
-              onAddToCart={addToCart}
-              selectedIngredients={selectedIngredients}
-              onToggleIngredient={toggleIngredient}
             />
           </div>
         </div>
@@ -997,17 +1085,17 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
             disabled={micState !== 'idle' && micState !== 'listening'}
             className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 ${
               micState === 'idle'
-                ? 'bg-[#10B981] hover:bg-[#059669]'
+                ? 'bg-[#14B8A6] hover:bg-[#10B981]'
                 : micState === 'listening'
                 ? 'bg-gradient-to-br from-[#14B8A6] to-[#0D9488] animate-pulse-scale'
-                : 'bg-[#10B981]'
+                : 'bg-[#14B8A6]'
             }`}
           >
             <Mic className="w-6 h-6 text-white" />
           </button>
           <button 
             onClick={handleQuickPurchase}
-            className="flex-1 text-right bg-[#10B981] hover:bg-[#059669] text-white font-semibold py-3 px-4 rounded-xl transition-colors ml-3"
+            className="flex-1 text-right bg-[#14B8A6] hover:bg-[#10B981] text-white font-semibold py-3 px-4 rounded-xl transition-colors ml-3"
           >
             Checkout
           </button>

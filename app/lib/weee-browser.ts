@@ -106,6 +106,14 @@ async function isContextValid(ctx: BrowserContext | null): Promise<boolean> {
  * @returns {Promise<BrowserContext>} Playwright browser context
  */
 export async function getWeeeContext(): Promise<BrowserContext> {
+  // Check if Playwright browsers are installed
+  try {
+    await chromium.executablePath();
+  } catch (error) {
+    throw new Error(
+      'Playwright browsers are not installed. Please run: npx playwright install chromium'
+    );
+  }
   // Check if existing context is still valid
   const isValid = await isContextValid(context)
   

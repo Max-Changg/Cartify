@@ -1,135 +1,222 @@
-import { Mic, Check, Loader2, Download, MapPin } from 'lucide-react';
-import type { CartItem as CartItemType, MicrophoneState } from '../types';
-import { CartItem } from './ui/CartItem';
+import { Mic, Volume2, Bot, User, Pause } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import type { MicrophoneState, ConversationMessage } from '../types';
 
 interface VoicePanelProps {
-  cartItems: CartItemType[];
   micState: MicrophoneState;
-  transcription: string;
-  timer: number;
-  totalCost: number;
   onMicClick: () => void;
-  onUpdateQuantity: (id: string, delta: number) => void;
-  onToggleItem: (id: string) => void;
-  onRemoveItem: (id: string) => void;
-  onExportList: () => void;
-  onQuickPurchase: () => void;
-  isProcessing?: boolean;
+  conversationMessages: ConversationMessage[];
+  isConversationActive: boolean;
 }
 
 export function VoicePanel({
-  cartItems,
   micState,
-  transcription,
-  timer,
-  totalCost,
   onMicClick,
-  onUpdateQuantity,
-  onToggleItem,
-  onRemoveItem,
-  onExportList,
-  onQuickPurchase,
-  isProcessing = false,
+  conversationMessages,
+  isConversationActive,
 }: VoicePanelProps) {
+  // Determine if user is speaking (listening state)
+  const isUserSpeaking = micState === 'listening';
+  // Determine if AI is speaking (processing state)
+  const isAISpeaking = micState === 'processing';
+  // Determine if paused
+  const isPaused = micState === 'paused';
+  // Determine if idle
+  const isIdle = micState === 'idle';
+  
+  // Auto-scroll to bottom when new messages arrive
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversationMessages]);
+
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-fit sticky top-24">
-      {/* Microphone Button */}
-      <div className="flex flex-col items-center mb-6">
-        <button
-          onClick={onMicClick}
-          disabled={micState === 'processing' || micState === 'success'}
-          className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 ${
-            micState === 'idle'
-              ? 'bg-gray-200 hover:bg-gray-300 cursor-pointer'
-              : micState === 'listening'
-              ? 'bg-gradient-to-br from-[#14B8A6] to-[#0D9488] animate-pulse-scale cursor-pointer'
-              : micState === 'processing'
-              ? 'bg-gradient-to-br from-[#10B981] to-[#059669] cursor-not-allowed'
-              : 'bg-[#10B981] cursor-not-allowed'
-          }`}
-        >
-          {micState === 'idle' && <Mic className="w-10 h-10 text-gray-600" />}
-          {micState === 'listening' && <Mic className="w-10 h-10 text-white" />}
-          {micState === 'processing' && <Loader2 className="w-10 h-10 text-white animate-spin" />}
-          {micState === 'success' && <Check className="w-10 h-10 text-white" />}
-          
-          {micState === 'listening' && (
-            <div className="absolute inset-0 rounded-full bg-[#14B8A6] opacity-30 animate-ping"></div>
-          )}
-        </button>
-        
-        <p className="mt-4 text-gray-500 text-sm">
-          {micState === 'idle' && 'Speak to add items'}
-          {micState === 'listening' && 'Listening... Click to stop'}
-          {micState === 'processing' && 'Processing...'}
-          {micState === 'success' && 'Items added!'}
-        </p>
-      </div>
-
-      {/* Transcription Display */}
-      {(micState === 'listening' || micState === 'processing' || (micState === 'success' && transcription)) && transcription && (
-        <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-          <p className="text-sm text-gray-600 mb-1">Voice Input:</p>
-          <p className="text-gray-900 italic">
-            "{transcription}"
-          </p>
+    <div className="bg-gradient-to-br from-[#14B8A6] via-[#14B8A6] to-[#10B981] rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-full min-h-[600px] flex flex-col">
+      {/* Top Section - Header */}
+      <div className="mb-4 flex-shrink-0">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+            <Bot className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Grocery Assistant</h2>
+            <p className="text-sm text-white/90 font-light">Ask me what you need</p>
+          </div>
         </div>
-      )}
-
-      {/* Timer */}
-      <div className="mb-6 p-3 bg-[#F0FDF4] rounded-xl border border-[#10B981]/20">
-        <p className="text-sm text-gray-600">Items added in: <span className="font-bold text-[#10B981]">{timer}s</span></p>
       </div>
 
-      {/* Shopping Cart List */}
-      <div className="mb-4">
-        <h3 className="font-semibold text-gray-900 mb-3">Shopping Cart ({cartItems.length})</h3>
-        <div className="space-y-2 max-h-[400px] overflow-y-auto">
-          {cartItems.length === 0 ? (
-            <p className="text-gray-400 text-sm text-center py-8">Your cart is empty</p>
-          ) : (
-            cartItems.map(item => (
-              <CartItem
-                key={item.id}
-                item={item}
-                onUpdateQuantity={onUpdateQuantity}
-                onToggle={onToggleItem}
-                onRemove={onRemoveItem}
+      {/* Center - Conversation Area */}
+      <div className="flex flex-col mb-4 overflow-hidden relative" style={{ height: 'calc(100vh - 300px)', maxHeight: '500px' }}>
+
+        {!isConversationActive && conversationMessages.length === 0 ? (
+          // Empty State
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="w-24 h-24 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center mb-4">
+              <Bot className="w-12 h-12 text-white/80" />
+            </div>
+            <p className="text-white/90 text-lg font-medium mb-2">Start a conversation</p>
+            <p className="text-white/70 text-sm">Press the mic to begin</p>
+          </div>
+        ) : (
+          // Conversation Messages - Fixed height scrollable container
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto pr-2 space-y-3 z-0"
+            style={{ minHeight: 0 }}
+          >
+            {conversationMessages.map((message, index) => (
+              <div
+                key={index}
+                className={`flex gap-2 ${
+                  message.speaker === 'user' ? 'flex-row-reverse' : 'flex-row'
+                }`}
+                style={{
+                  animation: message.speaker === 'user' 
+                    ? 'slide-in-right 0.3s cubic-bezier(0.4, 0.0, 0.2, 1) forwards'
+                    : 'slide-in-left-message 0.3s cubic-bezier(0.4, 0.0, 0.2, 1) forwards',
+                  animationDelay: `${index * 0.1}s`,
+                  opacity: 0,
+                }}
+              >
+                {/* Avatar */}
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                    message.speaker === 'user'
+                      ? 'bg-white/20'
+                      : 'bg-white/20'
+                  }`}
+                >
+                  {message.speaker === 'user' ? (
+                    <User className="w-4 h-4 text-white" />
+                  ) : (
+                    <Bot className="w-4 h-4 text-white" />
+                  )}
+                </div>
+                
+                {/* Message Bubble */}
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-2 transition-all duration-300 ${
+                    message.speaker === 'user'
+                      ? 'bg-white/90 text-gray-900'
+                      : 'bg-white/20 text-white'
+                  }`}
+                >
+                  <p className="text-sm leading-relaxed">{message.text}</p>
+                </div>
+              </div>
+            ))}
+            
+            {/* Typing indicator when AI is speaking */}
+            {isAISpeaking && (
+              <div className="flex gap-2 animate-fade-in">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                  <Bot className="w-4 h-4 text-white" />
+                </div>
+                <div className="bg-white/20 rounded-2xl px-4 py-2">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                    <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+
+      {/* Bottom - Microphone Button */}
+      <div className="flex flex-col items-center flex-shrink-0">
+        <div className="relative w-24 h-24 flex items-center justify-center">
+          {/* Radar Pulses - Light grey transparent, only when idle */}
+          {isIdle && (
+            <>
+              <div 
+                className="absolute inset-0 rounded-full border border-gray-400/30 animate-radar-pulse pointer-events-none"
+                style={{
+                  boxShadow: '0 0 6px rgba(156, 163, 175, 0.15)',
+                }}
               />
-            ))
+              <div 
+                className="absolute inset-0 rounded-full border border-gray-400/25 animate-radar-pulse pointer-events-none"
+                style={{
+                  animationDelay: '1s',
+                  boxShadow: '0 0 6px rgba(156, 163, 175, 0.12)',
+                }}
+              />
+              <div 
+                className="absolute inset-0 rounded-full border border-gray-400/20 animate-radar-pulse pointer-events-none"
+                style={{
+                  animationDelay: '2s',
+                  boxShadow: '0 0 6px rgba(156, 163, 175, 0.08)',
+                }}
+              />
+            </>
           )}
+          
+          <button
+            onClick={onMicClick}
+            className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 z-10 ${
+              isIdle
+                ? 'bg-[#14B8A6] hover:bg-[#10B981] cursor-pointer'
+                : isPaused
+                ? 'bg-yellow-500 hover:bg-yellow-600 cursor-pointer'
+                : isUserSpeaking
+                ? 'bg-[#EF4444] cursor-pointer'
+                : isAISpeaking
+                ? 'bg-[#3B82F6] cursor-pointer'
+                : 'bg-[#14B8A6] cursor-pointer'
+            } ${
+              (isUserSpeaking || isAISpeaking) ? 'shadow-[0_0_20px_rgba(255,255,255,0.3)]' : ''
+            }`}
+          >
+            {/* Icon */}
+            {isIdle && <Mic className="w-10 h-10 text-white" />}
+            {isPaused && <Pause className="w-10 h-10 text-white" />}
+            {isUserSpeaking && <Mic className="w-10 h-10 text-white" />}
+            {isAISpeaking && <Volume2 className="w-10 h-10 text-white" />}
+          </button>
         </div>
-      </div>
 
-      {/* Subtotal */}
-      <div className="border-t border-gray-200 pt-4 mb-4">
-        <div className="flex justify-between items-center">
-          <span className="text-gray-600">Subtotal:</span>
-          <span className="text-2xl font-bold text-gray-900">${totalCost.toFixed(2)}</span>
-        </div>
-      </div>
+        {/* Wave Bars Animation */}
+        {(isUserSpeaking || isAISpeaking) && (
+          <div className="flex items-end justify-center gap-1.5 mt-3 h-8">
+            {[...Array(5)].map((_, i) => (
+              <div
+                key={i}
+                className="w-1.5 bg-white rounded-full animate-wave-bar"
+                style={{
+                  animationDelay: `${i * 0.1}s`,
+                  height: `${10 + Math.random() * 20}px`,
+                }}
+              />
+            ))}
+          </div>
+        )}
 
-      {/* Action Buttons */}
-      <div className="space-y-3">
-        <button 
-          onClick={onQuickPurchase}
-          disabled={isProcessing || cartItems.length === 0}
-          className="w-full bg-[#10B981] hover:bg-[#059669] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors"
-        >
-          Quick Purchase via Weee!
-        </button>
-        <button 
-          onClick={onExportList}
-          disabled={isProcessing || cartItems.length === 0}
-          className="w-full bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:cursor-not-allowed text-gray-700 font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
-        >
-          <Download className="w-4 h-4" />
-          Export List
-        </button>
-        <button className="w-full text-[#10B981] hover:text-[#059669] font-medium py-2 flex items-center justify-center gap-2 transition-colors">
-          <MapPin className="w-4 h-4" />
-          Find Nearby Stores
-        </button>
+        {/* Text Below Button */}
+        <p className="mt-4 text-white/90 text-sm font-medium">
+          {isIdle && 'Press to talk'}
+          {isPaused && 'Paused - Click to resume'}
+          {isUserSpeaking && 'Recording...'}
+          {isAISpeaking && 'AI Speaking...'}
+          {isConversationActive && !isPaused && !isUserSpeaking && !isAISpeaking && micState !== 'idle' && 'Listening...'}
+        </p>
+        
+        {/* Pause/Resume hint */}
+        {isConversationActive && !isPaused && (
+          <p className="mt-1 text-white/60 text-xs">
+            Click mic to pause
+          </p>
+        )}
+        {isPaused && (
+          <p className="mt-1 text-white/60 text-xs">
+            Click mic to resume
+          </p>
+        )}
       </div>
     </div>
   );

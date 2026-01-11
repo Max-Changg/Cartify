@@ -12,11 +12,11 @@ export function Header({ cartItemCount, totalCost }: HeaderProps) {
         <div className="flex items-center justify-between">
           {/* Logo/Branding */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#10B981] to-[#059669] rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#10B981] to-[#14B8A6] rounded-xl flex items-center justify-center">
               <Mic className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-xl text-gray-900">VoiceCart</h1>
+              <h1 className="font-bold text-xl text-gray-900">Cartify</h1>
               <p className="text-xs text-gray-500">Speak. Shop. Done.</p>
             </div>
           </div>
@@ -33,7 +33,7 @@ export function Header({ cartItemCount, totalCost }: HeaderProps) {
                 <ShoppingCart className="w-5 h-5 text-gray-700" />
               </button>
               {cartItemCount > 0 && (
-                <div className="absolute -top-2 -right-2 w-6 h-6 bg-[#10B981] rounded-full flex items-center justify-center">
+                <div className="absolute -top-2 -right-2 w-6 h-6 bg-[#14B8A6] rounded-full flex items-center justify-center">
                   <span className="text-xs font-bold text-white">{cartItemCount}</span>
                 </div>
               )}
