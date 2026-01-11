@@ -93,6 +93,7 @@ export default function HomePage() {
   const lastUserRequestRef = useRef<string>('');
   const lastAgentMessageRef = useRef<string>('');
   const connectionRef = useRef<any>(null);
+  const pendingActionRef = useRef<{ type: string; data: any } | null>(null);
 
   useEffect(() => {
     // Check backend health
@@ -931,38 +932,43 @@ CRITICAL TRIGGER PHRASES (say these EXACTLY):
           
           const contentLower = content.toLowerCase();
           
-          // Initial generation trigger
+          // Initial generation trigger - queue the action
           if (contentLower.includes('let me generate some recipes')) {
-            console.log('🎯 Initial generation trigger detected!');
-            setTimeout(() => {
-              generateRecipesAndShoppingList();
-            }, 1000);
+            console.log('🎯 Initial generation trigger detected! Queuing action...');
+            pendingActionRef.current = {
+              type: 'generate_initial',
+              data: null
+            };
           }
-          // Shopping list refinement trigger
+          // Shopping list refinement trigger - queue the action
           else if (contentLower.includes('let me update your shopping list')) {
-            console.log('🎯 Shopping list refinement trigger detected!');
+            console.log('🎯 Shopping list refinement trigger detected! Queuing action...');
             const userRequest = lastUserRequestRef.current;
-            console.log('🎯 Using user request:', userRequest);
-            setTimeout(() => {
-              if (userRequest) {
-                refineShoppingList(userRequest);
-              } else {
-                console.error('❌ No user request found for refinement');
-              }
-            }, 1000);
+            console.log('🎯 User request to queue:', userRequest);
+            
+            if (userRequest) {
+              pendingActionRef.current = {
+                type: 'refine_shopping_list',
+                data: userRequest
+              };
+            } else {
+              console.error('❌ No user request found for refinement');
+            }
           }
-          // Recipe regeneration trigger
+          // Recipe regeneration trigger - queue the action
           else if (contentLower.includes('let me find different recipes')) {
-            console.log('🎯 Recipe regeneration trigger detected!');
+            console.log('🎯 Recipe regeneration trigger detected! Queuing action...');
             const userRequest = lastUserRequestRef.current;
-            console.log('🎯 Using user request:', userRequest);
-            setTimeout(() => {
-              if (userRequest) {
-                regenerateRecipes(userRequest);
-              } else {
-                console.error('❌ No user request found for regeneration');
-              }
-            }, 1000);
+            console.log('🎯 User request to queue:', userRequest);
+            
+            if (userRequest) {
+              pendingActionRef.current = {
+                type: 'regenerate_recipes',
+                data: userRequest
+              };
+            } else {
+              console.error('❌ No user request found for regeneration');
+            }
           }
         }
       });
@@ -1008,6 +1014,30 @@ CRITICAL TRIGGER PHRASES (say these EXACTLY):
           await flushAudioBuffer();
         } else {
           console.log('  - No remaining chunks to flush');
+        }
+        
+        // Execute any pending actions AFTER agent is done speaking
+        // This prevents lag during conversation
+        if (pendingActionRef.current) {
+          const action = pendingActionRef.current;
+          pendingActionRef.current = null; // Clear the pending action
+          
+          console.log('🚀 Executing pending action:', action.type);
+          
+          // Wait a bit to ensure audio playback is fully complete
+          setTimeout(() => {
+            switch (action.type) {
+              case 'generate_initial':
+                generateRecipesAndShoppingList();
+                break;
+              case 'refine_shopping_list':
+                refineShoppingList(action.data);
+                break;
+              case 'regenerate_recipes':
+                regenerateRecipes(action.data);
+                break;
+            }
+          }, 500); // Short delay to ensure smooth transition
         }
         
         // Will return to listening when playback queue finishes
@@ -1268,6 +1298,7 @@ CRITICAL TRIGGER PHRASES (say these EXACTLY):
     conversationMessagesRef.current = []; // Clear ref too
     lastUserRequestRef.current = ''; // Clear last request
     lastAgentMessageRef.current = ''; // Clear last agent message
+    pendingActionRef.current = null; // Clear any pending actions
     console.log('Recording stopped completely');
   };
 
