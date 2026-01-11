@@ -932,7 +932,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
 
 INITIAL CONVERSATION:
 1. First ask: "What are your health and fitness goals?" and listen for their response
-2. Then ask: "What types of food do you like? Any cuisines, dishes, or ingredients in particular?" and listen for their response
+2. Then ask: "What types of food do you like? Do you have any preference on cuisine, dishes, or ingredients?" and listen for their response
 3. Once you have BOTH pieces of information, say EXACTLY: "Perfect! Let me generate some recipes for you."
 
 FEEDBACK LOOP (after generation or modification):
