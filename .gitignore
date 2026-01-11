@@ -53,3 +53,8 @@ venv/
 .idea/
 *.swp
 *.swo
+*~
+
+# Merge planning docs
+MERGE_PLAN.md
+SETUP.md
