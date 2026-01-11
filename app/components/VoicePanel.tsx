@@ -33,16 +33,22 @@ export function VoicePanel({
   }, [conversationMessages]);
 
   return (
-    <div className="bg-gradient-to-br from-[#14B8A6] via-[#14B8A6] to-[#10B981] rounded-xl shadow-lg border border-[#10B981]/30 p-6 h-[calc(100vh-120px)] flex flex-col">
+    <div className="bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-600 rounded-2xl shadow-2xl shadow-emerald-500/20 border border-emerald-400/30 p-6 h-[calc(100vh-120px)] flex flex-col animate-gradient relative overflow-hidden">
+      {/* Subtle pattern overlay */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_50%)]" />
+      </div>
+      
+      <div className="relative z-10 flex flex-col h-full">
       {/* Top Section - Header */}
       <div className="mb-4 flex-shrink-0">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
-            <Bot className="w-6 h-6 text-white" />
+          <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg border border-white/30">
+            <Bot className="w-6 h-6 text-white drop-shadow-md" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Grocery Assistant</h2>
-            <p className="text-sm text-white/90 font-light">Ask me what you need</p>
+            <h2 className="text-xl font-bold text-white drop-shadow-md">Grocery Assistant</h2>
+            <p className="text-sm text-white/95 font-light drop-shadow-sm">Ask me what you need</p>
           </div>
         </div>
       </div>
@@ -157,25 +163,23 @@ export function VoicePanel({
           
           <button
             onClick={onMicClick}
-            className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 z-10 ${
+            className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 z-10 button-shine-effect ${
               isIdle
-                ? 'bg-[#14B8A6] hover:bg-[#10B981] cursor-pointer'
+                ? 'bg-white hover:bg-gray-50 cursor-pointer shadow-2xl hover:scale-105'
                 : isPaused
-                ? 'bg-yellow-500 hover:bg-yellow-600 cursor-pointer'
+                ? 'bg-gradient-to-br from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 cursor-pointer shadow-2xl shadow-yellow-500/50'
                 : isUserSpeaking
-                ? 'bg-[#EF4444] cursor-pointer'
+                ? 'bg-gradient-to-br from-red-500 to-rose-600 cursor-pointer shadow-2xl shadow-red-500/50 animate-pulse-scale'
                 : isAISpeaking
-                ? 'bg-[#3B82F6] cursor-pointer'
-                : 'bg-[#14B8A6] cursor-pointer'
-            } ${
-              (isUserSpeaking || isAISpeaking) ? 'shadow-[0_0_20px_rgba(255,255,255,0.3)]' : ''
+                ? 'bg-gradient-to-br from-blue-500 to-indigo-600 cursor-pointer shadow-2xl shadow-blue-500/50 animate-pulse-scale'
+                : 'bg-white hover:bg-gray-50 cursor-pointer shadow-2xl'
             }`}
           >
             {/* Icon */}
-            {isIdle && <Mic className="w-10 h-10 text-white" />}
-            {isPaused && <Pause className="w-10 h-10 text-white" />}
-            {isUserSpeaking && <Mic className="w-10 h-10 text-white" />}
-            {isAISpeaking && <Volume2 className="w-10 h-10 text-white" />}
+            {isIdle && <Mic className="w-10 h-10 text-emerald-600 drop-shadow-sm" />}
+            {isPaused && <Pause className="w-10 h-10 text-white drop-shadow-lg" />}
+            {isUserSpeaking && <Mic className="w-10 h-10 text-white drop-shadow-lg" />}
+            {isAISpeaking && <Volume2 className="w-10 h-10 text-white drop-shadow-lg" />}
           </button>
         </div>
 
@@ -221,6 +225,7 @@ export function VoicePanel({
             </p>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

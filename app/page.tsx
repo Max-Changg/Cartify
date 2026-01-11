@@ -1893,8 +1893,15 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F0FDF4] via-[#F9FAFB] to-[#ECFDF5] pb-24 lg:pb-0">
-      <Header cartItemCount={cartItems.filter(item => item.enabled).length} totalCost={totalCost} />
+    <div className="min-h-screen relative bg-gradient-to-br from-emerald-50 via-white to-teal-50 animate-gradient pb-24 lg:pb-0">
+      {/* Subtle mesh gradient overlay */}
+      <div className="fixed inset-0 mesh-gradient pointer-events-none z-0" />
+      
+      {/* Dot pattern overlay */}
+      <div className="fixed inset-0 dot-pattern pointer-events-none z-0 opacity-40" />
+      
+      <div className="relative z-10">
+        <Header cartItemCount={cartItems.filter(item => item.enabled).length} totalCost={totalCost} />
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6">
         {/* Removed all notification banners - feedback is now inline and contextual */}
@@ -1935,28 +1942,28 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-40">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-200 p-4 shadow-2xl z-40">
         <div className="flex items-center justify-between max-w-[1600px] mx-auto">
           <div className="flex-1">
             <p className="text-xs text-gray-500">Total</p>
-            <p className="font-bold text-lg text-gray-900">${totalCost.toFixed(2)}</p>
+            <p className="font-bold text-lg bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">${totalCost.toFixed(2)}</p>
           </div>
           <button
             onClick={handleMicClick}
             disabled={micState !== 'idle' && micState !== 'listening'}
-            className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 ${
+            className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg button-shine-effect ${
               micState === 'idle'
-                ? 'bg-[#14B8A6] hover:bg-[#10B981]'
+                ? 'bg-gradient-to-br from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 hover:shadow-xl hover:scale-105'
                 : micState === 'listening'
-                ? 'bg-gradient-to-br from-[#14B8A6] to-[#0D9488] animate-pulse-scale'
-                : 'bg-[#14B8A6]'
+                ? 'bg-gradient-to-br from-emerald-500 to-teal-600 animate-pulse-scale shadow-emerald-500/50'
+                : 'bg-gradient-to-br from-emerald-500 to-teal-500'
             }`}
           >
-            <Mic className="w-6 h-6 text-white" />
+            <Mic className="w-6 h-6 text-white drop-shadow-lg" />
           </button>
           <button 
             onClick={handleQuickPurchase}
-            className="flex-1 text-right bg-[#14B8A6] hover:bg-[#10B981] text-white font-semibold py-3 px-4 rounded-xl transition-colors ml-3"
+            className="flex-1 text-right bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 ml-3 shadow-lg hover:shadow-xl hover:scale-[1.02] button-shine-effect"
           >
             Checkout
           </button>
@@ -1970,6 +1977,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
         userLocation={userLocation}
         stores={nearbyStores}
       />
+      </div>
     </div>
   );
 }

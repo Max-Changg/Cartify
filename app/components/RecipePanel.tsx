@@ -20,12 +20,15 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6 h-[calc(100vh-120px)] flex flex-col relative overflow-hidden">
-        {/* Decorative accent */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#10B981] via-[#14B8A6] to-[#10B981]"></div>
+      <div className="bg-white rounded-2xl shadow-2xl shadow-emerald-500/5 border border-gray-100 p-6 h-[calc(100vh-120px)] flex flex-col relative overflow-hidden">
+        {/* Decorative gradient accent */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500 animate-gradient"></div>
+        
         {/* Header */}
         <div className="mb-4 flex-shrink-0">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Recipes You Can Make</h2>
+          <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 bg-clip-text text-transparent animate-gradient-text">
+            Recipes You Can Make
+          </h2>
           
           {/* Filter Chips */}
           <div className="flex flex-wrap gap-2">
@@ -33,10 +36,10 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
-                className={`px-4 py-2 rounded-full font-medium transition-all duration-300 ${
+                className={`px-4 py-2 rounded-full font-medium transition-all duration-300 button-shine-effect ${
                   selectedCategory === category
-                    ? 'bg-[#14B8A6] text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:scale-105'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:scale-105'
                 }`}
               >
                 {category.charAt(0).toUpperCase() + category.slice(1)}
@@ -55,13 +58,13 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
             </div>
           ) : filteredRecipes.length === 0 ? (
             <div className="text-center py-12 flex flex-col items-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-[#10B981] to-[#14B8A6] rounded-full flex items-center justify-center mb-4 opacity-20">
-                <svg className="w-10 h-10 text-[#14B8A6]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30 animate-float">
+                <svg className="w-12 h-12 text-white drop-shadow-lg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
               </div>
-              <p className="text-gray-600 font-medium mb-2">No recipes yet</p>
-              <p className="text-gray-400 text-sm">Speak or type your meal request to get started!</p>
+              <p className="text-gray-700 font-semibold mb-2 text-lg">No recipes yet</p>
+              <p className="text-gray-500 text-sm">Speak or type your meal request to get started!</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-full overflow-y-auto pr-2 items-start relative">
