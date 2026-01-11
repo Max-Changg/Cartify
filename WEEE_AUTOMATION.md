@@ -2,6 +2,21 @@
 
 This project includes Playwright-based browser automation for interacting with sayweee.com.
 
+## 🎉 Recent Updates
+
+### Single Window Mode (Fixed!)
+Previously, the automation would open and close a new browser window for each ingredient, which was slow and inefficient.
+
+**Now Fixed:**
+- ✅ Uses a **single browser window** for all items
+- ✅ Much faster and more efficient
+- ✅ Better user experience (no window flickering)
+- ✅ More human-like behavior
+
+**Key Functions:**
+- `addMultipleItemsToWeeeCart(items)` - Batch add items in one window
+- `getOrReuseWeeePage()` - Reuses existing page instead of creating new ones
+
 ## 📦 What's Installed
 
 - `@playwright/test` - Playwright testing framework
@@ -10,25 +25,54 @@ This project includes Playwright-based browser automation for interacting with s
 
 ## 🚀 How to Use
 
-### 1. Using the Utility Function
+### 1. Core Functions
 
-The main utility is located in `app/lib/weee-browser.ts`:
+The main utilities are located in `app/lib/weee-browser.ts`:
 
+#### `getWeeeContext()` - Browser Context Management
 ```typescript
-import { getWeeeContext, getWeeePage } from '@/lib/weee-browser'
+import { getWeeeContext } from '@/lib/weee-browser'
 
 // Get browser context (launches browser if not already running)
 const context = await getWeeeContext()
+```
 
-// Create a new page
+#### `getOrReuseWeeePage()` - Single Window (Recommended)
+```typescript
+import { getOrReuseWeeePage } from '@/lib/weee-browser'
+
+// Reuses existing page/window if available
+// Perfect for batch operations!
+const page = await getOrReuseWeeePage()
+```
+
+#### `getWeeePage()` - New Window
+```typescript
+import { getWeeePage } from '@/lib/weee-browser'
+
+// Creates a NEW page/tab every time
+// Use only when you need multiple windows
 const page = await getWeeePage()
+```
 
-// Navigate and interact
-await page.goto('https://www.sayweee.com')
-const title = await page.title()
+#### `addMultipleItemsToWeeeCart()` - Batch Add (Recommended)
+```typescript
+import { addMultipleItemsToWeeeCart } from '@/lib/weee-browser'
 
-// Close the page when done
-await page.close()
+// Add multiple items using ONE browser window
+const result = await addMultipleItemsToWeeeCart(['apple', 'banana', 'milk'])
+```
+
+#### `addItemToWeeeCart()` - Single Item
+```typescript
+import { addItemToWeeeCart } from '@/lib/weee-browser'
+
+// Add single item (can optionally reuse a page)
+const result = await addItemToWeeeCart('apple')
+
+// OR reuse an existing page
+const page = await getOrReuseWeeePage()
+const result = await addItemToWeeeCart('apple', page)
 ```
 
 ### 2. Features
@@ -96,6 +140,7 @@ curl -X POST http://localhost:3000/api/cart/add \
 ```
 
 **Features:**
+- ✅ **Single browser window** - No more opening/closing windows for each item!
 - ✅ Processes items sequentially
 - ✅ Random delays (200-500ms) between items
 - ✅ Human-like behavior
@@ -207,20 +252,34 @@ export async function GET() {
 
 ### Adding to Cart
 
+**✅ Recommended: Use Batch Function (Single Window)**
+
 ```typescript
-import { addItemToWeeeCart } from '@/lib/weee-browser'
+import { addMultipleItemsToWeeeCart } from '@/lib/weee-browser'
 
 export async function POST(request: Request) {
   const { items } = await request.json()
   
-  const results = []
+  // This uses a SINGLE browser window for all items
+  const result = await addMultipleItemsToWeeeCart(items)
   
-  for (const itemName of items) {
-    const result = await addItemToWeeeCart(itemName)
-    results.push(result)
-  }
+  return NextResponse.json(result)
+}
+```
+
+**Legacy: Single Item (Opens New Window)**
+
+```typescript
+import { addItemToWeeeCart } from '@/lib/weee-browser'
+
+export async function POST(request: Request) {
+  const { itemName } = await request.json()
   
-  return NextResponse.json({ results })
+  // Note: This will open a new window each time
+  // For multiple items, use addMultipleItemsToWeeeCart instead
+  const result = await addItemToWeeeCart(itemName)
+  
+  return NextResponse.json(result)
 }
 ```
 

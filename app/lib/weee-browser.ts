@@ -300,6 +300,46 @@ export async function getWeeePage() {
 }
 
 /**
+ * Get or reuse an existing page from the context
+ * This prevents opening multiple windows
+ */
+export async function getOrReuseWeeePage() {
+  const ctx = await getWeeeContext()
+  const pages = ctx.pages()
+  
+  // Reuse the last active page if it exists
+  if (pages.length > 0) {
+    console.log(`♻️  Reusing existing page (${pages.length} page(s) available)`)
+    const page = pages[pages.length - 1] // Use the most recent page
+    
+    // Verify the page is responsive
+    try {
+      await page.evaluate(() => true)
+      console.log(`✅ Page is responsive and ready (URL: ${page.url()})`)
+      
+      // Bring page to front to ensure it's visible
+      await page.bringToFront()
+      
+      return page
+    } catch (error) {
+      console.warn(`⚠️  Page is not responsive, creating new one...`)
+      // Page is closed or unresponsive, create a new one
+    }
+  }
+  
+  // Otherwise create a new page
+  console.log('📄 Creating new page')
+  try {
+    return await ctx.newPage()
+  } catch (error) {
+    console.log('⚠️  Failed to create page, resetting context...')
+    context = null
+    const newCtx = await getWeeeContext()
+    return await newCtx.newPage()
+  }
+}
+
+/**
  * Navigate to the Weee! cart page
  * 
  * @returns Success status
@@ -342,21 +382,68 @@ export async function navigateToCart() {
  * Add an item to the Weee! cart
  * 
  * @param itemName - Name of the item to search for
+ * @param providedPage - Optional page to reuse (prevents opening new windows)
  * @returns Object with success status and details
  */
-export async function addItemToWeeeCart(itemName: string) {
+export async function addItemToWeeeCart(itemName: string, providedPage?: any) {
   console.log(`🛒 Adding item to cart: "${itemName}"`)
   
-  const page = await getWeeePage()
+  const page = providedPage || await getOrReuseWeeePage()
+  const shouldClosePage = !providedPage // Only close if we created the page
   
   try {
+    // Ensure page is in a stable state
+    try {
+      // Wait for any pending navigation to complete
+      await page.waitForLoadState('domcontentloaded', { timeout: 3000 }).catch(() => {})
+    } catch (e) {
+      // Ignore timeout - page might already be loaded
+    }
+    
+    // Log current URL before navigation
+    const currentUrl = page.url()
+    console.log(`📍 Current page URL: ${currentUrl}`)
+    
+    // Close any potential popups/modals that might block navigation
+    try {
+      const closeButtons = page.locator('button[aria-label*="close"], button[class*="close"], [role="dialog"] button').first()
+      if (await closeButtons.isVisible({ timeout: 500 }).catch(() => false)) {
+        console.log(`🚫 Closing popup/modal...`)
+        await closeButtons.click({ timeout: 1000 }).catch(() => {})
+        await page.waitForTimeout(300)
+      }
+    } catch (e) {
+      // Ignore errors - popup might not exist
+    }
+    
     // Navigate to search results
     const searchUrl = `https://www.sayweee.com/en/search?keyword=${encodeURIComponent(itemName)}`
     console.log(`🔍 Navigating to: ${searchUrl}`)
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded' }) // Faster than 'networkidle'
+    
+    try {
+      await page.goto(searchUrl, { 
+        waitUntil: 'domcontentloaded',
+        timeout: 30000 // 30 second timeout
+      })
+      const newUrl = page.url()
+      console.log(`✅ Navigation complete - now at: ${newUrl}`)
+      
+      // Verify we actually navigated
+      if (newUrl === currentUrl) {
+        console.warn(`⚠️  URL hasn't changed - navigation may have failed`)
+      }
+    } catch (navError) {
+      console.error(`❌ Navigation error:`, navError)
+      if (shouldClosePage) await page.close()
+      return {
+        success: false,
+        message: `Navigation failed: ${navError instanceof Error ? navError.message : 'Unknown error'}`,
+        itemName,
+      }
+    }
     
     // Wait for search results to load
-    await page.waitForTimeout(600)  // Increased for more stability
+    await page.waitForTimeout(800)  // Increased for more stability
     
     // Skip the slow waitForSelector - we'll find elements directly
     console.log('🔍 Finding product...')
@@ -369,7 +456,7 @@ export async function addItemToWeeeCart(itemName: string) {
     
     if (!cardVisible) {
       console.log('❌ No products')
-      await page.close()
+      if (shouldClosePage) await page.close()
       return {
         success: false,
         message: 'No products found',
@@ -400,7 +487,7 @@ export async function addItemToWeeeCart(itemName: string) {
     
     if (!buttonVisible) {
       console.log('❌ Button not found')
-      await page.close()
+      if (shouldClosePage) await page.close()
       return {
         success: false,
         message: 'Could not find Add to Cart button',
@@ -472,7 +559,7 @@ export async function addItemToWeeeCart(itemName: string) {
     
     console.log(`✅ Added: ${productName.trim()}`)
     
-    await page.close()
+    if (shouldClosePage) await page.close()
     
     return {
       success: true,
@@ -482,12 +569,72 @@ export async function addItemToWeeeCart(itemName: string) {
     }
   } catch (error) {
     console.error('❌ Error adding item to cart:', error)
-    await page.close()
+    if (shouldClosePage) await page.close()
     
     return {
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error',
       itemName,
     }
+  }
+}
+
+/**
+ * Add multiple items to cart using a single browser window
+ * This is much more efficient than opening/closing windows for each item
+ * 
+ * @param items - Array of item names to add
+ * @returns Object with results for each item
+ */
+export async function addMultipleItemsToWeeeCart(items: string[]) {
+  console.log(`\n🛒 ===== BATCH ADD: ${items.length} items =====`)
+  console.log(`📋 Items to add: ${items.join(', ')}`)
+  
+  // Get or reuse a single page for all items
+  console.log(`\n🌐 Getting browser page...`)
+  const page = await getOrReuseWeeePage()
+  console.log(`✅ Page ready: ${page.url()}`)
+  
+  const results = []
+  
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+    console.log(`📦 [${i + 1}/${items.length}] Processing: "${item}"`)
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+    
+    // Add item using the same page
+    const result = await addItemToWeeeCart(item, page)
+    results.push(result)
+    
+    console.log(result.success 
+      ? `✅ Success: ${result.productName || item}` 
+      : `❌ Failed: ${result.message}`)
+    
+    // Add a small delay between items to be more human-like
+    if (i < items.length - 1) {
+      const delay = 200 + Math.random() * 300 // 200-500ms
+      console.log(`⏱️  Waiting ${Math.round(delay)}ms before next item...`)
+      await page.waitForTimeout(delay)
+    }
+  }
+  
+  const successful = results.filter(r => r.success).length
+  const failed = results.filter(r => !r.success).length
+  
+  console.log(`\n✅ Batch complete: ${successful} successful, ${failed} failed`)
+  console.log(`🪟  Browser window left open for review`)
+  
+  return {
+    success: failed === 0,
+    summary: {
+      total: items.length,
+      successful,
+      failed,
+    },
+    results,
+    successfulItems: results.filter(r => r.success).map(r => r.itemName),
+    failedItems: results.filter(r => !r.success).map(r => r.itemName),
+    message: `Added ${successful} of ${items.length} item(s) to cart. Browser window left open.`,
   }
 }
