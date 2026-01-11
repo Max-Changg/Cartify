@@ -54,8 +54,11 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
             recipe.matchPercentage === 100 ? 'animate-shimmer-badge' : ''
           }`}
           style={{
+            animationName: recipe.matchPercentage === 100 ? 'scale-in' : 'none',
+            animationDuration: recipe.matchPercentage === 100 ? '0.4s' : undefined,
+            animationTimingFunction: recipe.matchPercentage === 100 ? 'cubic-bezier(0.4, 0.0, 0.2, 1)' : undefined,
+            animationFillMode: recipe.matchPercentage === 100 ? 'forwards' : undefined,
             animationDelay: `${index * 150 + 300}ms`,
-            animation: recipe.matchPercentage === 100 ? 'scale-in 0.4s cubic-bezier(0.4, 0.0, 0.2, 1) forwards' : 'none',
             opacity: isVisible ? 1 : 0,
           }}
         >
