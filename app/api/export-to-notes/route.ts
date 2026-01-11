@@ -23,8 +23,10 @@ export async function POST(request: NextRequest) {
     const tempFile = join(tmpdir(), `cartify-export-${Date.now()}.txt`);
     
     try {
-      // Normalize line endings and write to temp file
+      // Normalize line endings - ensure consistent Unix-style line breaks
       const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      
+      // Write to temp file with UTF-8 encoding and BOM to ensure proper reading
       writeFileSync(tempFile, normalizedContent, { encoding: 'utf8' });
       
       const noteTitle = title || 'Cartify Shopping List';
@@ -36,22 +38,34 @@ export async function POST(request: NextRequest) {
       // Escape the file path for AppleScript
       const escapedPath = tempFile.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       
-      // Simplified AppleScript - much faster execution
-      // Read file content and create note in one operation
+      // Optimized AppleScript - preserves formatting and activates Notes
+      // Convert \n to proper line breaks that Notes understands
       const appleScript = `set filePath to POSIX file "${escapedPath}"
 set fileRef to open for access filePath
-set fileContent to read fileRef
+set fileContent to read fileRef as «class utf8»
 close access fileRef
 
+-- Convert line breaks: split by linefeed and rejoin with return (line feed)
+set oldDelimiters to AppleScript's text item delimiters
+set AppleScript's text item delimiters to linefeed
+set contentLines to text items of fileContent
+set AppleScript's text item delimiters to return
+set formattedContent to contentLines as text
+set AppleScript's text item delimiters to oldDelimiters
+
 tell application "Notes"
+  activate
   try
     tell account "iCloud"
-      make new note at folder "Notes" with properties {name:"${escapedTitle}", body:fileContent}
+      set newNote to make new note at folder "Notes" with properties {name:"${escapedTitle}", body:formattedContent}
     end tell
-  on error
+  on error errMsg
     -- Fallback to default account
-    make new note with properties {name:"${escapedTitle}", body:fileContent}
+    set newNote to make new note with properties {name:"${escapedTitle}", body:formattedContent}
   end try
+  
+  -- Show the new note
+  show newNote
 end tell
 
 return "success"`;

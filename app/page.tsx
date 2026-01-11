@@ -1735,8 +1735,9 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     }
 
     // Format exactly like the txt file (without emojis to avoid encoding issues)
-    let exportContent = "Your Shopping List:\n";
+    let exportContent = "Cartify Shopping List\n";
     exportContent += "\n";
+    exportContent += "Your Shopping List:\n";
     exportContent += "\n";
     
     cartItems.forEach(item => {
