@@ -38,30 +38,18 @@ export async function POST(request: NextRequest) {
       // Escape the file path for AppleScript
       const escapedPath = tempFile.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       
-      // Optimized AppleScript - preserves formatting and activates Notes
-      // Convert \n to proper line breaks that Notes understands
-      const appleScript = `set filePath to POSIX file "${escapedPath}"
-set fileRef to open for access filePath
-set fileContent to read fileRef as «class utf8»
-close access fileRef
-
--- Convert line breaks: split by linefeed and rejoin with return (line feed)
-set oldDelimiters to AppleScript's text item delimiters
-set AppleScript's text item delimiters to linefeed
-set contentLines to text items of fileContent
-set AppleScript's text item delimiters to return
-set formattedContent to contentLines as text
-set AppleScript's text item delimiters to oldDelimiters
+      // AppleScript - use cat to read and paragraphs to preserve formatting
+      const appleScript = `set fileContent to do shell script "cat " & quoted form of "${escapedPath}"
 
 tell application "Notes"
   activate
   try
     tell account "iCloud"
-      set newNote to make new note at folder "Notes" with properties {name:"${escapedTitle}", body:formattedContent}
+      set newNote to make new note at folder "Notes" with properties {name:"${escapedTitle}", body:fileContent}
     end tell
-  on error errMsg
+  on error
     -- Fallback to default account
-    set newNote to make new note with properties {name:"${escapedTitle}", body:formattedContent}
+    set newNote to make new note with properties {name:"${escapedTitle}", body:fileContent}
   end try
   
   -- Show the new note
