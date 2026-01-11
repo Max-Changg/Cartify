@@ -7,6 +7,7 @@ import { VoicePanel } from './components/VoicePanel';
 import { RecipePanel } from './components/RecipePanel';
 import { IngredientsPanel } from './components/ui/IngredientsPanel';
 import type { CartItem, Recipe, Ingredient, MicrophoneState } from './types';
+import { createClient, AgentEvents } from '@deepgram/sdk';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -62,11 +63,24 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [backendStatus, setBackendStatus] = useState<string>('disconnected');
   const [selectedIngredients, setSelectedIngredients] = useState<Set<string>>(new Set());
+  
+  // AI Agent state
+  const [healthGoals, setHealthGoals] = useState('');
+  const [cuisinePreferences, setCuisinePreferences] = useState('');
+  const [excludedItems, setExcludedItems] = useState<string[]>([]);
+  const [conversationTranscript, setConversationTranscript] = useState<string>('');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStartTimeRef = useRef<number>(0);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const agentWsRef = useRef<WebSocket | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioQueueRef = useRef<AudioBuffer[]>([]);
+  const isPlayingRef = useRef<boolean>(false);
+  const healthGoalsRef = useRef<string>('');
+  const cuisinePreferencesRef = useRef<string>('');
+  const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
 
   useEffect(() => {
     // Check backend health
@@ -213,173 +227,462 @@ export default function HomePage() {
     }
   };
 
+  const generateRecipesAndShoppingList = async () => {
+    if (isGeneratingRecipes) return; // Prevent duplicate calls
+    
+    setIsGeneratingRecipes(true);
+    console.log('🧪 Generating recipes and shopping list...');
+    console.log('Health goals:', healthGoalsRef.current);
+    console.log('Cuisine preferences:', cuisinePreferencesRef.current);
+
+    try {
+      // Step 1: Generate recipes
+      const recipesResponse = await fetch('/api/ai-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_recipes',
+          healthGoals: healthGoalsRef.current,
+          cuisinePreferences: cuisinePreferencesRef.current,
+          excludedItems: excludedItems,
+        }),
+      });
+
+      if (!recipesResponse.ok) {
+        throw new Error('Failed to generate recipes');
+      }
+
+      const { recipes } = await recipesResponse.json();
+      console.log('✅ Generated recipes:', recipes);
+
+      // Convert to Recipe format expected by UI
+      const formattedRecipes: Recipe[] = recipes.map((r: any, index: number) => ({
+        id: `recipe-${Date.now()}-${index}`,
+        name: r.name,
+        cuisine: r.cuisine,
+        servings: r.servings || 4,
+        prepTime: r.prepTime || '30 mins',
+        healthBenefits: r.healthBenefits || '',
+        ingredients: r.ingredients.map((ing: string, idx: number) => ({
+          id: `ing-${index}-${idx}`,
+          name: ing,
+          amount: '1x',
+          category: 'other' as const,
+        })),
+      }));
+
+      setRecipes(formattedRecipes);
+
+      // Step 2: Generate shopping list from recipes
+      const shoppingResponse = await fetch('/api/ai-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_shopping_list',
+          currentRecipes: recipes,
+        }),
+      });
+
+      if (!shoppingResponse.ok) {
+        throw new Error('Failed to generate shopping list');
+      }
+
+      const { shopping_list } = await shoppingResponse.json();
+      console.log('✅ Generated shopping list:', shopping_list);
+
+      // Convert to CartItem format and add to cart
+      const newCartItems: CartItem[] = shopping_list.map((item: any, index: number) => ({
+        id: `cart-${Date.now()}-${index}`,
+        name: item.item,
+        amount: item.quantity,
+        price: item.estimatedPrice || 0,
+        imageUrl: '', // No image for now
+        category: item.category || 'other',
+        quantity: 1,
+        enabled: true,
+      }));
+
+      setCartItems(newCartItems);
+      console.log('✅ Shopping cart populated with', newCartItems.length, 'items');
+
+      setIsGeneratingRecipes(false);
+    } catch (error: any) {
+      console.error('❌ Error generating recipes:', error);
+      setError('Failed to generate recipes: ' + error.message);
+      setIsGeneratingRecipes(false);
+    }
+  };
+
   const startRecording = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Microphone access not supported');
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm'
-      });
-
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-      recordingStartTimeRef.current = Date.now();
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await processAudio(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        setError('Recording error occurred');
-        setMicState('idle');
-      };
-
-      // Start recording with timeslice to ensure data is captured
-      mediaRecorder.start(100);
       setMicState('listening');
       setError(null);
-      setTimer(30);
+      recordingStartTimeRef.current = Date.now();
 
-      // Start timer
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
+      // Get API key from backend
+      console.log('Getting API key from backend...');
+      const connectResponse = await fetch('/api/ai-agent/connect', {
+        method: 'POST',
+      });
+
+      if (!connectResponse.ok) {
+        const errorData = await connectResponse.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to get agent connection info');
       }
-      timerIntervalRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
-        const remaining = Math.max(0, 30 - elapsed);
-        setTimer(remaining);
-        if (elapsed >= 30) {
-          stopRecording();
-          if (timerIntervalRef.current) {
-            clearInterval(timerIntervalRef.current);
-            timerIntervalRef.current = null;
+
+      const { deepgramKey } = await connectResponse.json();
+      console.log('✅ Got API key from backend');
+
+      // Use Deepgram SDK as documented
+      // Reference: https://developers.deepgram.com/docs/voice-agent
+      console.log('Creating Deepgram client...');
+      const deepgram = createClient(deepgramKey);
+      const connection = deepgram.agent();
+      
+      // Store connection reference for cleanup
+      agentWsRef.current = connection as any;
+
+      // Initialize AudioContext for playing agent responses
+      // Use default sample rate (usually 48000) and let browser handle resampling
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+        console.log('🔊 AudioContext created with sample rate:', audioContextRef.current.sampleRate);
+      }
+
+      // Handle Welcome event - configure agent after connection opens
+      connection.on(AgentEvents.Welcome, async () => {
+        console.log('✅ Welcome to Deepgram Voice Agent!');
+        
+        // Configure the agent as per documentation
+        connection.configure({
+          audio: {
+            input: {
+              encoding: "linear16",
+              sample_rate: 16000,
+            },
+            output: {
+              encoding: "linear16",
+              sample_rate: 16000,
+              container: "none",
+            },
+          },
+          agent: {
+            language: "en",
+            listen: {
+              provider: {
+                type: "deepgram",
+                model: "nova-3",
+              },
+            },
+            think: {
+              provider: {
+                type: "open_ai",
+                model: "gpt-4o-mini",
+              },
+              prompt: `You are a virtual assistant for helping build a shopping list based on health goals and food preferences.
+
+Your task is to:
+1. First ask: "What are your health and fitness goals?" and listen for their response
+2. Then ask: "What types of food do you like? Any cuisines, dishes, or ingredients in particular?" and listen for their response
+3. Once you have BOTH pieces of information, say EXACTLY this phrase: "Perfect! Let me generate some recipes for you."
+4. After that, briefly describe the recipes you'll be generating based on their preferences
+
+Keep responses short (1-2 sentences). Be warm and conversational.
+
+IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes for you." when you have both their health goals AND cuisine preferences. This triggers the recipe generation system.`,
+            },
+            speak: {
+              provider: {
+                type: "deepgram",
+                model: "aura-2-thalia-en",
+              },
+            },
+            greeting: "Hello! Let's build your shopping list. First off, what are your health and fitness goals?",
+          },
+        });
+
+        console.log('✅ Agent configured!');
+
+        // Start microphone streaming after configuration
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              sampleRate: 16000,
+              channelCount: 1,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            }
+          });
+
+          console.log('🎤 Microphone access granted');
+
+          // Use Web Audio API to capture PCM16 audio
+          const micAudioContext = new AudioContext({ sampleRate: 16000 });
+          const source = micAudioContext.createMediaStreamSource(stream);
+          const processor = micAudioContext.createScriptProcessor(4096, 1, 1);
+
+          source.connect(processor);
+          processor.connect(micAudioContext.destination);
+
+          processor.onaudioprocess = (event) => {
+            const inputData = event.inputBuffer.getChannelData(0);
+            
+            // Convert Float32 to Int16 (PCM16)
+            const pcm16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              const s = Math.max(-1, Math.min(1, inputData[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            
+            // Send PCM16 data to Deepgram via SDK (as ArrayBuffer)
+            connection.send(pcm16.buffer as ArrayBuffer);
+          };
+
+          // Store for cleanup
+          mediaRecorderRef.current = {
+            stop: () => {
+              processor.disconnect();
+              source.disconnect();
+              micAudioContext.close();
+              stream.getTracks().forEach(track => track.stop());
+            },
+            stream,
+            state: 'recording'
+          } as any;
+
+          console.log('📡 Streaming audio to agent...');
+        } catch (micError: any) {
+          console.error('❌ Microphone access error:', micError);
+          setError('Microphone access denied');
+          setMicState('idle');
+        }
+      });
+
+      // Handle connection open
+      connection.on(AgentEvents.Open, () => {
+        console.log('🔌 Connection opened');
+      });
+
+      // Handle audio from agent
+      connection.on(AgentEvents.Audio, (data: any) => {
+        console.log('🔊 Audio chunk received');
+        playAgentAudio(data);
+      });
+
+      // Handle conversation text
+      connection.on(AgentEvents.ConversationText, (data: any) => {
+        console.log('💬 Conversation:', data);
+        const role = data.role === 'user' ? 'You' : 'Agent';
+        const content = data.content;
+        
+        setTranscription(`${role}: ${content}`);
+        setConversationTranscript(prev => prev + `\n${role}: ${content}`);
+
+        // Track user responses to extract preferences
+        if (data.role === 'user') {
+          // Check if this is likely a health goals response (first question)
+          if (!healthGoalsRef.current && content.length > 10) {
+            console.log('📝 Captured health goals:', content);
+            healthGoalsRef.current = content;
+          }
+          // Check if this is likely a cuisine preference response (second question)
+          else if (healthGoalsRef.current && !cuisinePreferencesRef.current && content.length > 5) {
+            console.log('📝 Captured cuisine preferences:', content);
+            cuisinePreferencesRef.current = content;
           }
         }
-      }, 1000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to access microphone');
-      setMicState('idle');
-    }
-  };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-        setMicState('processing');
-      } catch (err) {
-        console.error('Error stopping recorder:', err);
+        // Detect trigger phrase from agent
+        if (data.role === 'assistant' && content.toLowerCase().includes('let me generate some recipes')) {
+          console.log('🎯 Trigger detected! Generating recipes...');
+          // Wait a moment for the audio to finish, then generate
+          setTimeout(() => {
+            generateRecipesAndShoppingList();
+          }, 1000);
+        }
+      });
+
+      // Handle user started speaking
+      connection.on(AgentEvents.UserStartedSpeaking, () => {
+        console.log('🎤 User started speaking');
+        // Clear any pending audio when user interrupts
+        audioQueueRef.current = [];
+      });
+
+      // Handle agent audio done
+      connection.on(AgentEvents.AgentAudioDone, () => {
+        console.log('✅ Agent finished speaking');
+        setMicState('listening');
+      });
+
+      // Handle errors
+      connection.on(AgentEvents.Error, (err: any) => {
+        console.error('❌ Agent error:', err);
+        setError(err.message || 'Agent error occurred');
         setMicState('idle');
-      }
-    }
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
+      });
+
+      // Handle connection close
+      connection.on(AgentEvents.Close, () => {
+        console.log('🔌 Connection closed');
+        setMicState('idle');
+      });
+
+      // Handle unhandled events
+      connection.on(AgentEvents.Unhandled, (data: any) => {
+        console.log('📦 Unhandled event:', data);
+      });
+
+      // Send keep-alive every 5 seconds
+      const keepAliveInterval = setInterval(() => {
+        if (agentWsRef.current) {
+          console.log('💓 Keep alive');
+          connection.keepAlive();
+        } else {
+          clearInterval(keepAliveInterval);
+        }
+      }, 5000);
+
+    } catch (err: any) {
+      setError(err.message || 'Failed to start conversation');
+      setMicState('idle');
+      console.error('Error starting agent:', err);
     }
   };
 
-  const processAudio = async (audioBlob: Blob) => {
-    setIsProcessing(true);
-    setError(null);
+  const playAgentAudio = async (audioData: ArrayBuffer | Uint8Array | unknown) => {
+    if (!audioContextRef.current) return;
 
-    // Check if audio blob is valid
-    if (!audioBlob || audioBlob.size === 0) {
-      setError('No audio recorded. Please try again.');
-      setIsProcessing(false);
-      setMicState('idle');
+    try {
+      // Handle different data formats from SDK
+      let arrayBuffer: ArrayBuffer;
+      if (audioData instanceof ArrayBuffer) {
+        arrayBuffer = audioData;
+      } else if (audioData instanceof Uint8Array) {
+        arrayBuffer = audioData.buffer.slice(audioData.byteOffset, audioData.byteOffset + audioData.byteLength) as ArrayBuffer;
+      } else if (typeof audioData === 'object' && audioData !== null && 'buffer' in audioData) {
+        // Handle Buffer-like objects
+        const bufferLike = audioData as { buffer: ArrayBuffer; byteOffset: number; byteLength: number };
+        arrayBuffer = bufferLike.buffer.slice(bufferLike.byteOffset, bufferLike.byteOffset + bufferLike.byteLength) as ArrayBuffer;
+      } else {
+        console.warn('Unknown audio data format:', typeof audioData);
+        return;
+      }
+
+      // Convert PCM16 to AudioBuffer
+      const pcm16 = new Int16Array(arrayBuffer);
+      const float32 = new Float32Array(pcm16.length);
+      
+      // Convert Int16 to Float32 (-1 to 1 range)
+      for (let i = 0; i < pcm16.length; i++) {
+        float32[i] = pcm16[i] / 32768.0;
+      }
+
+      // Create audio buffer with 16000 sample rate (matches Deepgram output)
+      // AudioContext will automatically resample to its native rate (usually 48000)
+      const audioBuffer = audioContextRef.current.createBuffer(
+        1, // mono
+        float32.length,
+        16000 // sample rate from Deepgram agent output
+      );
+      
+      audioBuffer.getChannelData(0).set(float32);
+      
+      // Add to queue and play
+      audioQueueRef.current.push(audioBuffer);
+      
+      if (!isPlayingRef.current) {
+        playNextAudioChunk();
+      }
+    } catch (err) {
+      console.error('Error playing audio:', err);
+    }
+  };
+
+  const playNextAudioChunk = () => {
+    if (audioQueueRef.current.length === 0) {
+      isPlayingRef.current = false;
       return;
     }
 
-    try {
-      // Step 1: Transcribe audio
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
+    isPlayingRef.current = true;
+    const audioBuffer = audioQueueRef.current.shift()!;
+    
+    const source = audioContextRef.current!.createBufferSource();
+    source.buffer = audioBuffer;
+    
+    // Add a gain node for smooth volume control and prevent clicks
+    const gainNode = audioContextRef.current!.createGain();
+    source.connect(gainNode);
+    gainNode.connect(audioContextRef.current!.destination);
+    
+    // Add very short fade-in/out to prevent clicks (5ms)
+    const now = audioContextRef.current!.currentTime;
+    const fadeDuration = 0.005; // 5ms
+    
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(1, now + fadeDuration);
+    gainNode.gain.setValueAtTime(1, now + audioBuffer.duration - fadeDuration);
+    gainNode.gain.linearRampToValueAtTime(0, now + audioBuffer.duration);
+    
+    source.onended = () => {
+      playNextAudioChunk();
+    };
+    
+    source.start();
+  };
 
-      const transcribeResponse = await fetch('/api/voice/transcribe', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!transcribeResponse.ok) {
-        const errorData = await transcribeResponse.json().catch(() => ({ detail: 'Transcription failed' }));
-        throw new Error(errorData.detail || 'Transcription failed');
+  const stopRecording = () => {
+    console.log('Stopping recording...');
+    
+    // Close Deepgram SDK connection
+    if (agentWsRef.current) {
+      try {
+        // The SDK connection might have different close methods
+        if (typeof (agentWsRef.current as any).close === 'function') {
+          (agentWsRef.current as any).close();
+        } else if (typeof (agentWsRef.current as any).finish === 'function') {
+          (agentWsRef.current as any).finish();
+        }
+        agentWsRef.current = null;
+      } catch (err) {
+        console.error('Error closing connection:', err);
       }
-
-      const transcribeData = await transcribeResponse.json();
-      const transcriptText = transcribeData.transcript;
-
-      if (!transcriptText || transcriptText.trim() === '') {
-        throw new Error('No transcript received. Please try speaking again.');
-      }
-
-      setTranscription(transcriptText);
-
-      // Step 2: Process request and generate shopping list
-      const processResponse = await fetch('/api/process-request', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: transcriptText,
-        }),
-      });
-
-      if (!processResponse.ok) {
-        const errorData = await processResponse.json();
-        throw new Error(errorData.detail || 'Failed to process request');
-      }
-
-      const shoppingListData: ShoppingListResponse = await processResponse.json();
-
-      // Convert and update state
-      const newCartItems = convertToCartItems(shoppingListData.items);
-      const newRecipes = convertToRecipes(shoppingListData.recipes);
-      const newIngredients = convertToIngredients(shoppingListData.items);
-
-      setCartItems(newCartItems);
-      setRecipes(newRecipes);
-      setIngredients(newIngredients);
-      
-      // Select all ingredients by default
-      setSelectedIngredients(new Set(newIngredients.map(ing => ing.id)));
-      
-      setMicState('success');
-
-      // Calculate time taken
-      const timeTaken = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000);
-      setTimer(timeTaken);
-
-      // Reset to idle after showing success
-      setTimeout(() => {
-        setMicState('idle');
-        setTimer(30);
-      }, 2000);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred');
-      setMicState('idle');
-      console.error('Error processing audio:', err);
-    } finally {
-      setIsProcessing(false);
     }
+
+    // Stop media recorder / audio processor
+    if (mediaRecorderRef.current) {
+      try {
+        if (typeof mediaRecorderRef.current.stop === 'function') {
+          mediaRecorderRef.current.stop();
+        }
+        if (mediaRecorderRef.current.stream) {
+          mediaRecorderRef.current.stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+        }
+      } catch (err) {
+        console.error('Error stopping recorder:', err);
+      }
+      mediaRecorderRef.current = null;
+    }
+
+    // Clear audio queue
+    audioQueueRef.current = [];
+    isPlayingRef.current = false;
+
+    setMicState('idle');
+    setTranscription('');
+    console.log('Recording stopped');
   };
 
   const handleMicClick = () => {
     if (micState === 'idle') {
       startRecording();
-    } else if (micState === 'listening') {
+    } else if (micState === 'listening' || micState === 'processing') {
       stopRecording();
     }
   };
@@ -533,6 +836,12 @@ export default function HomePage() {
             >
               Dismiss
             </button>
+          </div>
+        )}
+
+        {isGeneratingRecipes && (
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-xl animate-pulse">
+            <p className="text-sm text-blue-600">🧪 Generating personalized recipes and shopping list...</p>
           </div>
         )}
 
