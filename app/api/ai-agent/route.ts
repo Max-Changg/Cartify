@@ -284,6 +284,27 @@ Return ONLY a JSON array with this structure (MAX 10 items), no other text:
       shoppingList = shoppingList.slice(0, 10);
     }
     
+    // Validate that all items have prices
+    const itemsWithoutPrice = shoppingList.filter((item: any) => 
+      !item.estimatedPrice || typeof item.estimatedPrice !== 'number' || item.estimatedPrice <= 0
+    );
+    
+    if (itemsWithoutPrice.length > 0) {
+      console.warn('⚠️ Some items missing valid prices:', itemsWithoutPrice);
+      // Add default prices to items missing them
+      shoppingList = shoppingList.map((item: any) => ({
+        ...item,
+        estimatedPrice: item.estimatedPrice && typeof item.estimatedPrice === 'number' && item.estimatedPrice > 0
+          ? item.estimatedPrice
+          : 2.99 // Default fallback price
+      }));
+      console.log('✅ Added default prices to items');
+    }
+    
+    // Log pricing summary
+    const totalCost = shoppingList.reduce((sum: number, item: any) => sum + (item.estimatedPrice || 0), 0);
+    console.log('💰 Shopping list total cost:', `$${totalCost.toFixed(2)}`);
+    
     return NextResponse.json({ shopping_list: shoppingList });
   } catch (err: any) {
     console.error('Shopping list generation error:', err);
@@ -323,15 +344,21 @@ CRITICAL RULES:
 1. Make ONLY the specific changes the user requested
 2. Keep ALL other items EXACTLY as they are (same quantity, same price, same name)
 3. If user says "remove X" or "I already have X" - DELETE that item completely
-4. If user says "add X" - ADD the new item(s) with reasonable quantities and prices
+4. If user says "add X" - ADD the new item(s) with reasonable quantities and realistic prices
 5. DO NOT reorganize, rename, or modify any items the user didn't mention
 6. DO NOT add items they didn't ask for
 7. DO NOT remove items they didn't mention
+8. EVERY item (existing and new) MUST have a valid "estimatedPrice" as a number (e.g., 3.99, not "$3.99")
+
+PRICING RULES:
+- For existing items: Keep the EXACT price shown above (don't change it!)
+- For new items: Use realistic grocery store prices (e.g., chicken breast: 8.99, broccoli: 2.49, protein powder: 24.99)
+- Always return estimatedPrice as a plain number, never as a string or with $ symbol
 
 Examples:
-- "remove soy sauce" → Remove ONLY soy sauce, keep everything else identical
-- "add chicken" → Add chicken, keep everything else identical
-- "I need more protein" → Add 2-3 protein items, keep everything else identical
+- "remove soy sauce" → Remove ONLY soy sauce, keep everything else with same prices
+- "add chicken" → Add chicken with estimatedPrice: 8.99, keep everything else with same prices
+- "I need more protein" → Add 2-3 protein items with prices, keep everything else with same prices
 
 Return ONLY a raw JSON array with NO explanations, NO markdown, NO extra text:
 [
@@ -401,6 +428,28 @@ Return ONLY a raw JSON array with NO explanations, NO markdown, NO extra text:
     }
     
     console.log('✅ Successfully parsed shopping list:', shoppingList.length, 'items');
+    
+    // Validate that all items have prices
+    const itemsWithoutPrice = shoppingList.filter((item: any) => 
+      !item.estimatedPrice || typeof item.estimatedPrice !== 'number' || item.estimatedPrice <= 0
+    );
+    
+    if (itemsWithoutPrice.length > 0) {
+      console.warn('⚠️ Some items missing valid prices:', itemsWithoutPrice);
+      // Add default prices to items missing them
+      shoppingList = shoppingList.map((item: any) => ({
+        ...item,
+        estimatedPrice: item.estimatedPrice && typeof item.estimatedPrice === 'number' && item.estimatedPrice > 0
+          ? item.estimatedPrice
+          : 2.99 // Default fallback price
+      }));
+      console.log('✅ Added default prices to items');
+    }
+    
+    // Log pricing summary
+    const totalCost = shoppingList.reduce((sum: number, item: any) => sum + (item.estimatedPrice || 0), 0);
+    console.log('💰 Refined list total cost:', `$${totalCost.toFixed(2)}`);
+    
     return NextResponse.json({ shopping_list: shoppingList });
   } catch (err: any) {
     console.error('Shopping list refinement error:', err);
