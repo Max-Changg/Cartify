@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ShoppingCart, Package, Loader2 } from 'lucide-react'
+import { Loader2, Package, ShoppingCart } from 'lucide-react'
+import { useState } from 'react'
 
 export default function WeeeTestPage() {
   const [itemName, setItemName] = useState('apple')
+  const [itemList, setItemList] = useState('apple\nbanana\nmilk')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
 
@@ -56,6 +57,54 @@ export default function WeeeTestPage() {
       setResult(data)
     } catch (error) {
       setResult({ success: false, error: 'Failed to add item' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const addMultipleToCart = async () => {
+    setLoading(true)
+    setResult(null)
+    
+    try {
+      // Parse items from textarea (one per line)
+      const items = itemList
+        .split('\n')
+        .map(item => item.trim())
+        .filter(item => item.length > 0)
+      
+      if (items.length === 0) {
+        setResult({ success: false, error: 'No items to add' })
+        setLoading(false)
+        return
+      }
+      
+      const response = await fetch('/api/cart/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      })
+      const data = await response.json()
+      setResult(data)
+    } catch (error) {
+      setResult({ success: false, error: 'Failed to add items' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const viewCart = async () => {
+    setLoading(true)
+    setResult(null)
+    
+    try {
+      const response = await fetch('/api/cart/view', {
+        method: 'POST',
+      })
+      const data = await response.json()
+      setResult(data)
+    } catch (error) {
+      setResult({ success: false, error: 'Failed to open cart' })
     } finally {
       setLoading(false)
     }
@@ -131,7 +180,7 @@ export default function WeeeTestPage() {
           {/* Add to Cart */}
           <Card>
             <CardHeader>
-              <CardTitle>2. Add Item to Cart</CardTitle>
+              <CardTitle>2. Add Single Item</CardTitle>
               <CardDescription>
                 Search for an item and add it to your Weee! cart
               </CardDescription>
@@ -164,6 +213,81 @@ export default function WeeeTestPage() {
                   <>
                     <ShoppingCart className="mr-2 h-4 w-4" />
                     Add to Cart
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Add Multiple to Cart */}
+          <Card className="border-green-200 dark:border-green-800">
+            <CardHeader>
+              <CardTitle>3. Add Multiple Items (Batch)</CardTitle>
+              <CardDescription>
+                Add multiple items at once with human-like delays. Cart page opens automatically when done!
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Item List (one per line)
+                </label>
+                <textarea
+                  value={itemList}
+                  onChange={(e) => setItemList(e.target.value)}
+                  placeholder="apple&#10;banana&#10;milk"
+                  rows={5}
+                  className="w-full px-3 py-2 border rounded-md font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Enter one item name per line. Random delays (200-500ms) will be added between items.
+                </p>
+              </div>
+              <Button 
+                onClick={addMultipleToCart} 
+                disabled={loading || !itemList.trim()}
+                className="w-full"
+                variant="default"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding Items...
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    Add All to Cart
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* View Cart */}
+          <Card className="border-blue-200 dark:border-blue-800">
+            <CardHeader>
+              <CardTitle>4. View Cart</CardTitle>
+              <CardDescription>
+                Navigate to your cart to review items and checkout
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button 
+                onClick={viewCart} 
+                disabled={loading}
+                className="w-full"
+                variant="outline"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Opening Cart...
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    View Cart & Checkout
                   </>
                 )}
               </Button>

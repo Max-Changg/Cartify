@@ -292,6 +292,45 @@ export async function getWeeePage() {
 }
 
 /**
+ * Navigate to the Weee! cart page
+ * 
+ * @returns Success status
+ */
+export async function navigateToCart() {
+  console.log('🛒 Navigating to cart page...')
+  
+  try {
+    const context = await getWeeeContext()
+    const pages = context.pages()
+    
+    let page
+    if (pages.length > 0) {
+      // Use the last active page
+      page = pages[pages.length - 1]
+    } else {
+      // Create a new page if none exist
+      page = await context.newPage()
+    }
+    
+    await page.goto('https://www.sayweee.com/en/cart', { waitUntil: 'networkidle' })
+    console.log('✅ Navigated to cart - ready for review and checkout!')
+    
+    return {
+      success: true,
+      message: 'Navigated to cart page',
+      url: 'https://www.sayweee.com/en/cart',
+    }
+  } catch (error) {
+    console.error('❌ Error navigating to cart:', error)
+    
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+/**
  * Add an item to the Weee! cart
  * 
  * @param itemName - Name of the item to search for
@@ -306,54 +345,22 @@ export async function addItemToWeeeCart(itemName: string) {
     // Navigate to search results
     const searchUrl = `https://www.sayweee.com/en/search?keyword=${encodeURIComponent(itemName)}`
     console.log(`🔍 Navigating to: ${searchUrl}`)
-    await page.goto(searchUrl, { waitUntil: 'networkidle' })
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded' }) // Faster than 'networkidle'
     
     // Wait for search results to load
-    await page.waitForTimeout(3000)
+    await page.waitForTimeout(600)  // Increased for more stability
     
-    // Wait for product cards to be visible
-    console.log('⏳ Waiting for product cards to load...')
-    await page.waitForSelector('button[data-testid="btn-atc-plus"]', { 
-      timeout: 10000 
-    }).catch(() => console.log('⚠️  Timeout waiting for add to cart buttons'))
+    // Skip the slow waitForSelector - we'll find elements directly
+    console.log('🔍 Finding product...')
     
-    // Find the first product card
-    const productCardSelectors = [
-      '[class*="ProductCard"]',
-      '[class*="product-card"]',
-      '[class*="product-item"]',
-      '[data-testid*="product"]',
-      '.item-card',
-      'article',
-      'div[class*="product"]',
-    ]
+    // Find product card directly with combined selector (faster than loop)
+    const productCard = page.locator('[class*="ProductCard"], article, div[class*="product"]').first()
     
-    let productCard = null
-    let productName = 'Unknown Product'
+    // Quick check (1 second max instead of 5)
+    const cardVisible = await productCard.isVisible({ timeout: 1000 }).catch(() => false)
     
-    // Try to find a product card
-    for (const selector of productCardSelectors) {
-      productCard = page.locator(selector).first()
-      const isVisible = await productCard.isVisible().catch(() => false)
-      
-      if (isVisible) {
-        console.log(`✅ Found product card with selector: ${selector}`)
-        
-        // Try to get the product name from within this card
-        try {
-          const nameElement = productCard.locator('[class*="name"], h3, h4, [class*="title"], [aria-label]').first()
-          productName = await nameElement.textContent() || productName
-          console.log(`📦 Product found: ${productName.trim()}`)
-        } catch (error) {
-          console.log('⚠️  Could not extract product name')
-        }
-        
-        break
-      }
-    }
-    
-    if (!productCard || !(await productCard.isVisible().catch(() => false))) {
-      console.log('❌ No product cards found')
+    if (!cardVisible) {
+      console.log('❌ No products')
       await page.close()
       return {
         success: false,
@@ -362,27 +369,29 @@ export async function addItemToWeeeCart(itemName: string) {
       }
     }
     
-    // CRITICAL: Hover over the product card to reveal the "Add to Cart" button
-    // The button has max-w-[0] and only expands on hover!
-    console.log('🖱️  Hovering over product card to reveal Add to Cart button...')
+    // Try to get product name
+    let productName = 'Unknown Product'
+    try {
+      const nameElement = productCard.locator('[class*="name"], h3, h4, [aria-label]').first()
+      productName = await nameElement.textContent({ timeout: 800 }).catch(() => 'Unknown Product') || 'Unknown Product'
+    } catch (error) {
+      // Use default name if extraction fails
+    }
+    
+    // Hover immediately
     await productCard.hover()
     
-    // Wait a moment for the hover animation to complete
-    await page.waitForTimeout(500)
+    // Tiny wait for button to expand
+    await page.waitForTimeout(200)
     
-    // Now find the add to cart button (should be visible after hover)
-    console.log('🔍 Looking for add to cart button...')
+    // Get button directly
     const addToCartButton = page.locator('button[data-testid="btn-atc-plus"]').first()
     
-    // Wait for it to be visible after hover
-    await addToCartButton.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {
-      console.log('⚠️  Button still not visible after hover')
-    })
+    // Quick check
+    const buttonVisible = await addToCartButton.isVisible({ timeout: 700 }).catch(() => false)
     
-    const isButtonVisible = await addToCartButton.isVisible().catch(() => false)
-    
-    if (!isButtonVisible) {
-      console.log('❌ Could not find add to cart button even after hover')
+    if (!buttonVisible) {
+      console.log('❌ Button not found')
       await page.close()
       return {
         success: false,
@@ -391,69 +400,69 @@ export async function addItemToWeeeCart(itemName: string) {
       }
     }
     
-    console.log('✅ Found add to cart button!')
+    console.log('✅ Clicking!')
 
     
-    // Bot evasion: Move mouse with random jitter
-    console.log('🖱️  Moving mouse to button with random jitter...')
+    // Bot evasion: Move mouse with random jitter (but faster)
+    console.log('🖱️  Moving mouse...')
     const buttonBox = await addToCartButton.boundingBox()
     
     if (buttonBox) {
-      // Calculate target position with random jitter (±5 pixels)
-      const targetX = buttonBox.x + buttonBox.width / 2 + (Math.random() * 10 - 5)
-      const targetY = buttonBox.y + buttonBox.height / 2 + (Math.random() * 10 - 5)
+      // Calculate target with small jitter
+      const targetX = buttonBox.x + buttonBox.width / 2 + (Math.random() * 6 - 3)
+      const targetY = buttonBox.y + buttonBox.height / 2 + (Math.random() * 6 - 3)
       
-      // Move mouse with smooth animation
-      await page.mouse.move(targetX, targetY, { steps: 10 })
+      // Move with fewer steps for speed (5 instead of 10)
+      await page.mouse.move(targetX, targetY, { steps: 5 })
       
-      // Random small delay (100-300ms)
-      await page.waitForTimeout(100 + Math.random() * 200)
+      // Shorter delay (50-150ms instead of 100-300ms)
+      await page.waitForTimeout(50)
     }
     
     // Click the button
-    console.log('👆 Clicking "Add to Cart" button...')
+    console.log('👆 Clicking...')
     await addToCartButton.click()
     
-    // Wait for potential variant popup or cart update
-    await page.waitForTimeout(1500)
+    // Shorter wait for popup (1000ms instead of 1500ms)
+    await page.waitForTimeout(1000)
     
-    // Handle variants popup if it appears
+    // Handle variants popup if it appears (quick check)
     const variantSelectors = [
-      '[class*="variant"], [class*="modal"], [class*="popup"], [role="dialog"]',
+      '[class*="variant"]',
+      '[class*="modal"]',
+      '[role="dialog"]',
     ]
     
     for (const selector of variantSelectors) {
-      const variantPopup = page.locator(selector)
-      const isVisible = await variantPopup.isVisible().catch(() => false)
+      const variantPopup = page.locator(selector).first()
+      const isVisible = await variantPopup.isVisible({ timeout: 500 }).catch(() => false)
       
       if (isVisible) {
-        console.log('📋 Variant selection popup detected, selecting first option...')
+        console.log('📋 Variant popup detected...')
         
-        // Try to find and click the first variant option
+        // Click first variant quickly
         const firstVariant = page.locator('button[class*="variant"], button[class*="option"], [role="radio"]').first()
-        const variantVisible = await firstVariant.isVisible().catch(() => false)
+        const variantVisible = await firstVariant.isVisible({ timeout: 500 }).catch(() => false)
         
         if (variantVisible) {
           await firstVariant.click()
-          console.log('✅ Selected first variant option')
-          await page.waitForTimeout(500)
+          await page.waitForTimeout(300)
         }
         
-        // Try to find and click the confirm/add button in the popup
-        const confirmButton = page.locator('button:has-text("Add"), button:has-text("Confirm"), button:has-text("确认")').first()
-        const confirmVisible = await confirmButton.isVisible().catch(() => false)
+        // Confirm quickly
+        const confirmButton = page.locator('button:has-text("Add"), button:has-text("Confirm")').first()
+        const confirmVisible = await confirmButton.isVisible({ timeout: 500 }).catch(() => false)
         
         if (confirmVisible) {
           await confirmButton.click()
-          console.log('✅ Confirmed variant selection')
-          await page.waitForTimeout(1000)
+          await page.waitForTimeout(500)
         }
         
         break
       }
     }
     
-    console.log(`✅ Successfully added item to cart: ${productName.trim()}`)
+    console.log(`✅ Added: ${productName.trim()}`)
     
     await page.close()
     

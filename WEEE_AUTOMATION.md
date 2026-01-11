@@ -70,6 +70,69 @@ Or visit in browser: http://localhost:3000/api/weee/test
 
 ## 📝 Example Usage Patterns
 
+### Add Multiple Items (Batch) - NEW! 🎉
+
+```bash
+# Add multiple items at once
+curl -X POST http://localhost:3000/api/cart/add \
+  -H "Content-Type: application/json" \
+  -d '{"items":["apple","banana","milk","eggs"]}'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "summary": {
+    "total": 4,
+    "successful": 4,
+    "failed": 0
+  },
+  "results": [...],
+  "successfulItems": ["apple", "banana", "milk", "eggs"],
+  "failedItems": [],
+  "message": "Added 4 of 4 item(s) to cart. Browser window left open."
+}
+```
+
+**Features:**
+- ✅ Processes items sequentially
+- ✅ Random delays (200-500ms) between items
+- ✅ Human-like behavior
+- ✅ Detailed results for each item
+- ✅ Browser stays open to review
+
+### Add Item to Cart (Single)
+
+```typescript
+import { addItemToWeeeCart } from '@/lib/weee-browser'
+
+export async function POST(request: Request) {
+  const { itemName } = await request.json()
+  
+  const result = await addItemToWeeeCart(itemName)
+  
+  return NextResponse.json(result)
+}
+```
+
+**Or use the API endpoint:**
+
+```bash
+# Add an item to cart
+curl -X POST http://localhost:3000/api/weee/add-to-cart \
+  -H "Content-Type: application/json" \
+  -d '{"itemName":"apple"}'
+```
+
+**Features:**
+- ✅ Searches for the item
+- ✅ Finds first in-stock product
+- ✅ Hovers to reveal button
+- ✅ Mouse movement with random jitter (bot evasion)
+- ✅ Handles variant selection popups
+- ✅ Detailed console logging
+
 ### Add Item to Cart (Built-in Function)
 
 ```typescript
