@@ -5,6 +5,7 @@ import { Mic } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { RecipePanel } from './components/RecipePanel';
 import { ShoppingCartPanel } from './components/ShoppingCartPanel';
+import { StoreMap } from './components/StoreMap';
 import { Header } from './components/ui/Header';
 import { VoicePanel } from './components/VoicePanel';
 import type { CartItem, ConversationMessage, MicrophoneState, Recipe } from './types';
@@ -83,6 +84,11 @@ export default function HomePage() {
   const cuisinePreferencesRef = useRef<string>('');
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
   const isAgentSpeakingRef = useRef<boolean>(false);
+  
+  // Store map state
+  const [isMapOpen, setIsMapOpen] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [nearbyStores, setNearbyStores] = useState<any[]>([]);
   const audioChunkBufferRef = useRef<Uint8Array[]>([]);
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const playbackTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1634,6 +1640,96 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     setCartItems(cartItems.filter(item => item.id !== id));
   };
 
+  const fetchStoresWithLocation = async (lat: number, lng: number) => {
+    try {
+      console.log('Got location:', lat, lng);
+      setUserLocation({ lat, lng });
+
+      // Fetch nearby stores
+      console.log('Fetching nearby stores...');
+      const response = await fetch(`/api/nearby-stores?lat=${lat}&lng=${lng}&radius=5000`);
+      console.log('Response status:', response.status);
+      
+      const data = await response.json();
+      console.log('Stores data:', data);
+
+      if (response.ok && data.stores) {
+        setNearbyStores(data.stores);
+        setIsMapOpen(true);
+        setError(null);
+        console.log('Map opened with', data.stores.length, 'stores');
+      } else {
+        setError(data.error || 'Failed to find nearby stores');
+        console.error('Error:', data.error);
+      }
+    } catch (fetchError: any) {
+      console.error('Error fetching stores:', fetchError);
+      setError('Failed to fetch stores: ' + fetchError.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleFindStores = async () => {
+    try {
+      setIsProcessing(true);
+      setError(null);
+      console.log('Finding stores...');
+
+      // Get user's location
+      if (!navigator.geolocation) {
+        setError('Geolocation is not supported by your browser');
+        setIsProcessing(false);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          await fetchStoresWithLocation(lat, lng);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          let errorMessage = 'Unable to get your location. ';
+          
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage += 'Location access denied. Please enable location permissions in your browser settings.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage += 'Location information unavailable.';
+              break;
+            case error.TIMEOUT:
+              errorMessage += 'Location request timed out. Trying with default location...';
+              // Fallback to a default location (San Francisco)
+              const defaultLat = 37.7749;
+              const defaultLng = -122.4194;
+              setUserLocation({ lat: defaultLat, lng: defaultLng });
+              // Try to fetch stores with default location
+              fetchStoresWithLocation(defaultLat, defaultLng);
+              return;
+            default:
+              errorMessage += 'An unknown error occurred.';
+              break;
+          }
+          
+          setError(errorMessage);
+          setIsProcessing(false);
+        },
+        {
+          timeout: 15000, // 15 second timeout
+          enableHighAccuracy: false,
+          maximumAge: 300000, // Use cached location if available (up to 5 minutes old)
+        }
+      );
+    } catch (error: any) {
+      console.error('Error in handleFindStores:', error);
+      setError('Failed to find stores: ' + error.message);
+      setIsProcessing(false);
+    }
+  };
+
   const handleExportList = async () => {
     if (cartItems.length === 0) {
       setError('No items to export');
@@ -1832,6 +1928,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
                 onRemoveItem={removeItem}
                 onExportList={handleExportList}
                 onQuickPurchase={handleQuickPurchase}
+                onFindStores={handleFindStores}
                 isProcessing={isProcessing}
               />
             </div>
@@ -1867,6 +1964,14 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
           </button>
         </div>
       </div>
+
+      {/* Store Map Modal */}
+      <StoreMap
+        isOpen={isMapOpen}
+        onClose={() => setIsMapOpen(false)}
+        userLocation={userLocation}
+        stores={nearbyStores}
+      />
     </div>
   );
 }
