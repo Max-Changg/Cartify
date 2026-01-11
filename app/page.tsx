@@ -1009,7 +1009,10 @@ CRITICAL TRIGGER PHRASES (say these EXACTLY):
     setMicState('processing');
     
     const audioBuffer = audioQueueRef.current.shift()!;
-    console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)');
+    const hasMoreChunks = audioQueueRef.current.length > 0;
+    const isLastChunk = !hasMoreChunks && !isAgentSpeakingRef.current;
+    
+    console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)', isLastChunk ? '[LAST CHUNK]' : '');
     
     const source = audioContextRef.current!.createBufferSource();
     source.buffer = audioBuffer;
@@ -1020,16 +1023,27 @@ CRITICAL TRIGGER PHRASES (say these EXACTLY):
     gainNode.connect(audioContextRef.current!.destination);
     
     const now = audioContextRef.current!.currentTime;
-    const fadeTime = 0.03; // 30ms fade for ultra-smooth transitions
+    const fadeTime = 0.005; // 5ms fade - minimal but prevents clicks
     
-    // Fade in at start
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
+    // Only fade in if not the first chunk (prevents cutting beginning)
+    // For first chunk, start at full volume
+    if (isPlayingRef.current) {
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
+    } else {
+      gainNode.gain.setValueAtTime(1, now);
+    }
     
-    // Fade out at end
-    const endTime = now + audioBuffer.duration;
-    gainNode.gain.setValueAtTime(1, endTime - fadeTime);
-    gainNode.gain.linearRampToValueAtTime(0, endTime);
+    // Only fade out if there are more chunks coming (NOT on last chunk!)
+    // This prevents cutting off the end of speech
+    if (!isLastChunk && hasMoreChunks) {
+      const endTime = now + audioBuffer.duration;
+      gainNode.gain.setValueAtTime(1, endTime - fadeTime);
+      gainNode.gain.linearRampToValueAtTime(0.8, endTime); // Gentle fade to 80%, not silence
+    } else {
+      // Last chunk: maintain full volume to the end
+      gainNode.gain.setValueAtTime(1, now);
+    }
     
     source.onended = () => {
       // Play next buffer immediately when this one ends
