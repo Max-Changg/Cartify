@@ -82,6 +82,8 @@ export default function HomePage() {
   const [isGeneratingRecipes, setIsGeneratingRecipes] = useState(false);
   const isAgentSpeakingRef = useRef<boolean>(false);
   const audioChunkBufferRef = useRef<Uint8Array[]>([]);
+  const audioQueueRef = useRef<AudioBuffer[]>([]);
+  const playbackTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Check backend health
@@ -226,6 +228,28 @@ export default function HomePage() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const flushAudioBuffer = async () => {
+    if (audioChunkBufferRef.current.length === 0) return;
+    
+    // Calculate total size of accumulated chunks
+    const totalSize = audioChunkBufferRef.current.reduce((sum, chunk) => sum + chunk.length, 0);
+    console.log('  - Flushing', audioChunkBufferRef.current.length, 'chunks (', totalSize, 'bytes)');
+    
+    // Combine chunks into single buffer
+    const combinedPcm = new Uint8Array(totalSize);
+    let offset = 0;
+    for (const chunk of audioChunkBufferRef.current) {
+      combinedPcm.set(chunk, offset);
+      offset += chunk.length;
+    }
+    
+    // Clear the buffer (we've taken these chunks)
+    audioChunkBufferRef.current = [];
+    
+    // Create WAV file and decode
+    await playAgentAudio(combinedPcm.buffer);
   };
 
   const generateRecipesAndShoppingList = async () => {
@@ -480,7 +504,7 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         console.log('  - Audio output:', data?.audio?.output);
       });
 
-      // Handle audio from agent - accumulate chunks for smooth playback
+      // Handle audio from agent - streaming approach for low latency
       connection.on(AgentEvents.Audio, (data: any) => {
         const size = data?.byteLength || data?.length || 0;
         console.log('🔊 Audio chunk received:', size, 'bytes');
@@ -501,6 +525,19 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         // Accumulate chunks
         audioChunkBufferRef.current.push(chunkData);
         console.log('  - Accumulated chunks:', audioChunkBufferRef.current.length);
+        
+        // Start playing after accumulating 15 chunks (~1 second of audio)
+        // Larger buffer = ultra-smooth playback
+        if (audioChunkBufferRef.current.length === 25) {
+          console.log('🎵 Initial buffer filled (25 chunks), flushing to playback...');
+          flushAudioBuffer();
+        }
+        
+        // Continue flushing every 30 chunks for smooth, continuous segments
+        if (audioChunkBufferRef.current.length % 30 === 0 && audioChunkBufferRef.current.length > 15) {
+          console.log('🎵 Periodic flush (30 chunks accumulated)');
+          flushAudioBuffer();
+        }
       });
 
       // Handle conversation text
@@ -536,13 +573,16 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         }
       });
 
-      // Handle user started speaking - clear audio
+      // Handle user started speaking - clear all audio
       connection.on(AgentEvents.UserStartedSpeaking, () => {
         console.log('🎤 User started speaking - interrupting agent');
-        // Clear any pending audio when user interrupts
+        
+        // Clear ALL audio buffers immediately
         audioChunkBufferRef.current = [];
+        audioQueueRef.current = [];
         isAgentSpeakingRef.current = false;
         isPlayingRef.current = false;
+        
         setMicState('listening');
       });
 
@@ -555,36 +595,20 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         audioChunkBufferRef.current = [];
       });
 
-      // Handle agent audio done - Combine and play all accumulated chunks
+      // Handle agent audio done - Flush any remaining chunks
       connection.on(AgentEvents.AgentAudioDone, async () => {
-        console.log('✅ Agent finished speaking - combining', audioChunkBufferRef.current.length, 'chunks');
+        console.log('✅ Agent finished speaking');
         isAgentSpeakingRef.current = false;
         
-        if (audioChunkBufferRef.current.length === 0) {
-          console.warn('⚠️ No audio chunks to play!');
-          setMicState('listening');
-          return;
+        // Flush any remaining buffered chunks
+        if (audioChunkBufferRef.current.length > 0) {
+          console.log('🎵 Final flush:', audioChunkBufferRef.current.length, 'remaining chunks');
+          await flushAudioBuffer();
+        } else {
+          console.log('  - No remaining chunks to flush');
         }
         
-        // Calculate total size
-        const totalSize = audioChunkBufferRef.current.reduce((sum, chunk) => sum + chunk.length, 0);
-        console.log('  - Total PCM data:', totalSize, 'bytes (', (totalSize / 32000).toFixed(2), 'seconds at 16kHz)');
-        
-        // Combine all chunks into one buffer
-        const combinedPcm = new Uint8Array(totalSize);
-        let offset = 0;
-        for (const chunk of audioChunkBufferRef.current) {
-          combinedPcm.set(chunk, offset);
-          offset += chunk.length;
-        }
-        
-        console.log('🎵 Combined all chunks into single buffer, preparing playback...');
-        
-        // Play the complete audio (smooth, no choppiness!)
-        await playAgentAudio(combinedPcm.buffer);
-        
-        // Clear buffer for next speech
-        audioChunkBufferRef.current = [];
+        // Will return to listening when playback queue finishes
       });
 
       // Handle errors
@@ -641,8 +665,6 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
         return;
       }
 
-      console.log('🎵 Creating WAV file with', pcmData.byteLength, 'bytes of PCM data');
-
       // Per Deepgram docs: Prepend WAV header for browser playback
       // https://developers.deepgram.com/docs/voice-agent-audio-playback
       const wavHeader = new Uint8Array([
@@ -679,35 +701,70 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
       wavBuffer[41] = (dataSize >> 8) & 0xff;
       wavBuffer[42] = (dataSize >> 16) & 0xff;
       wavBuffer[43] = (dataSize >> 24) & 0xff;
-
-      console.log('🎵 Decoding WAV file with browser decoder...');
       
-      // Decode the complete WAV file using browser's native decoder
+      // Decode the WAV file using browser's native decoder
       const audioBuffer = await audioContextRef.current.decodeAudioData(wavBuffer.buffer);
       
-      console.log('✅ Successfully decoded:', audioBuffer.duration.toFixed(2), 'seconds at', audioBuffer.sampleRate, 'Hz');
-      console.log('▶️  Starting smooth playback...');
+      console.log('  - Decoded:', audioBuffer.duration.toFixed(2), 's, adding to queue');
       
-      // Play immediately (single smooth audio)
-      isPlayingRef.current = true;
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
+      // Add to playback queue
+      audioQueueRef.current.push(audioBuffer);
       
-      source.onended = () => {
-        console.log('✅ Audio playback finished');
-        isPlayingRef.current = false;
-        setMicState('listening');
-      };
-      
-      source.start();
+      // Start playing if not already playing
+      if (!isPlayingRef.current) {
+        playNextAudioChunk();
+      }
       
     } catch (err) {
-      console.error('❌ Error playing audio:', err);
+      console.error('❌ Error preparing audio:', err);
       console.error('   PCM data size:', pcmData?.byteLength);
-      isPlayingRef.current = false;
-      setMicState('listening');
     }
+  };
+
+  const playNextAudioChunk = () => {
+    if (audioQueueRef.current.length === 0) {
+      console.log('✅ Playback queue empty');
+      isPlayingRef.current = false;
+      
+      // Only return to listening if agent is done speaking
+      if (!isAgentSpeakingRef.current) {
+        setMicState('listening');
+      }
+      return;
+    }
+
+    isPlayingRef.current = true;
+    setMicState('processing');
+    
+    const audioBuffer = audioQueueRef.current.shift()!;
+    console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)');
+    
+    const source = audioContextRef.current!.createBufferSource();
+    source.buffer = audioBuffer;
+    
+    // Add smooth fade-in/out to prevent clicks between segments
+    const gainNode = audioContextRef.current!.createGain();
+    source.connect(gainNode);
+    gainNode.connect(audioContextRef.current!.destination);
+    
+    const now = audioContextRef.current!.currentTime;
+    const fadeTime = 0.03; // 10ms fade for ultra-smooth transitions
+    
+    // Fade in at start
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
+    
+    // Fade out at end
+    const endTime = now + audioBuffer.duration;
+    gainNode.gain.setValueAtTime(1, endTime - fadeTime);
+    gainNode.gain.linearRampToValueAtTime(0, endTime);
+    
+    source.onended = () => {
+      // Play next buffer immediately when this one ends
+      playNextAudioChunk();
+    };
+    
+    source.start();
   };
 
   // Removed playNextAudioChunk - now playing accumulated audio directly
@@ -745,9 +802,11 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
       mediaRecorderRef.current = null;
     }
 
-    // Clear audio buffer
+    // Clear all audio buffers
     audioChunkBufferRef.current = [];
+    audioQueueRef.current = [];
     isPlayingRef.current = false;
+    isAgentSpeakingRef.current = false;
 
     setMicState('idle');
     setTranscription('');
