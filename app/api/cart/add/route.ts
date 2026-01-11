@@ -1,13 +1,5 @@
-import { addItemToWeeeCart, navigateToCart } from '@/lib/weee-browser'
+import { addMultipleItemsToWeeeCart, navigateToCart } from '@/lib/weee-browser'
 import { NextRequest, NextResponse } from 'next/server'
-
-interface AddToCartResult {
-  itemName: string
-  success: boolean
-  productName?: string
-  message?: string
-  error?: string
-}
 
 /**
  * API route to add multiple items to Weee! cart
@@ -50,74 +42,11 @@ export async function POST(request: NextRequest) {
     console.log(`📥 Received request to add ${items.length} item(s) to cart`)
     console.log(`📋 Items: ${items.join(', ')}`)
     
-    const results: AddToCartResult[] = []
-    const successfulItems: string[] = []
-    const failedItems: string[] = []
-    
-    // Loop through items and add each to cart
-    for (let i = 0; i < items.length; i++) {
-      const itemName = items[i]
-      
-      console.log(`\n[${i + 1}/${items.length}] Processing: "${itemName}"`)
-      
-      try {
-        // Add item to cart
-        const result = await addItemToWeeeCart(itemName)
-        
-        // Store result
-        results.push({
-          itemName,
-          success: result.success,
-          productName: result.productName,
-          message: result.message,
-        })
-        
-        if (result.success) {
-          successfulItems.push(itemName)
-          console.log(`✅ Successfully added: ${itemName}`)
-        } else {
-          failedItems.push(itemName)
-          console.log(`❌ Failed to add: ${itemName} - ${result.message}`)
-        }
-        
-      } catch (error) {
-        // Handle individual item errors
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        
-        results.push({
-          itemName,
-          success: false,
-          error: errorMessage,
-        })
-        
-        failedItems.push(itemName)
-        console.log(`❌ Error adding ${itemName}: ${errorMessage}`)
-      }
-      
-      // Add human-like delay between items (except after last item)
-    //   if (i < items.length - 1) {
-    //     // Random delay between 200-500ms
-    //     const delay = Math.floor(Math.random() * 300) + 200
-    //     console.log(`⏳ Waiting ${delay}ms before next item...`)
-    //     await new Promise(resolve => setTimeout(resolve, delay))
-    //   }
-    }
-    
-    // Summary
-    console.log('\n📊 Cart Addition Summary:')
-    console.log(`✅ Successful: ${successfulItems.length}/${items.length}`)
-    console.log(`❌ Failed: ${failedItems.length}/${items.length}`)
-    
-    if (successfulItems.length > 0) {
-      console.log(`✅ Added: ${successfulItems.join(', ')}`)
-    }
-    
-    if (failedItems.length > 0) {
-      console.log(`❌ Failed: ${failedItems.join(', ')}`)
-    }
+    // Use the new batch function that uses a single browser window
+    const batchResult = await addMultipleItemsToWeeeCart(items)
     
     // Navigate to cart page if any items were successfully added
-    if (successfulItems.length > 0) {
+    if (batchResult.summary.successful > 0) {
       console.log('\n🛒 Navigating to cart page...')
       await navigateToCart()
     }
@@ -126,19 +55,15 @@ export async function POST(request: NextRequest) {
     
     // Return comprehensive results
     return NextResponse.json({
-      success: true,
-      summary: {
-        total: items.length,
-        successful: successfulItems.length,
-        failed: failedItems.length,
-      },
-      results,
-      successfulItems,
-      failedItems,
-      message: successfulItems.length > 0 
-        ? `Added ${successfulItems.length} of ${items.length} item(s) to cart. Navigated to cart page for checkout.`
+      success: batchResult.success,
+      summary: batchResult.summary,
+      results: batchResult.results,
+      successfulItems: batchResult.successfulItems,
+      failedItems: batchResult.failedItems,
+      message: batchResult.summary.successful > 0 
+        ? `Added ${batchResult.summary.successful} of ${items.length} item(s) to cart. Navigated to cart page for checkout.`
         : `Failed to add items to cart.`,
-      cartUrl: successfulItems.length > 0 ? 'https://www.sayweee.com/en/cart' : null,
+      cartUrl: batchResult.summary.successful > 0 ? 'https://www.sayweee.com/en/cart' : null,
     })
     
   } catch (error) {
