@@ -621,15 +621,49 @@ async function addRecipeIngredients(
     currentRecipesLength: currentRecipes?.length || 0
   });
 
-  // Find the recipe by title (fuzzy match)
+  // Use Gemini to identify which recipe the user is referring to
+  const recipeNames = currentRecipes.map((r: any) => r.name || r.title).join('\n- ');
+  
+  const identifyPrompt = `The user has these recipes available:
+- ${recipeNames}
+
+The user said: "${userRequest}"
+
+Which recipe is the user referring to? Return ONLY the exact recipe name from the list above, nothing else.
+If unclear, return the most likely match.`;
+
+  const identifyResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: identifyPrompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 100,
+        }
+      })
+    }
+  );
+
+  if (!identifyResponse.ok) {
+    throw new Error(`Gemini API error: ${identifyResponse.status}`);
+  }
+
+  const identifyData = await identifyResponse.json();
+  const identifiedRecipeName = identifyData.candidates[0]?.content?.parts[0]?.text?.trim() || '';
+  console.log('🔍 Gemini identified recipe:', identifiedRecipeName);
+
+  // Find the recipe from currentRecipes using fuzzy match
   const targetRecipe = currentRecipes.find((recipe: any) => {
-    const title = (recipe.name || recipe.title || '').toLowerCase();
-    const searchTerm = recipeTitle.toLowerCase();
-    return title.includes(searchTerm) || searchTerm.includes(title);
+    const recipeName = ((recipe.name || recipe.title) || '').toLowerCase().trim();
+    const identified = identifiedRecipeName.toLowerCase().trim();
+    return recipeName === identified || recipeName.includes(identified) || identified.includes(recipeName);
   });
 
   if (!targetRecipe) {
-    console.error('❌ Recipe not found:', recipeTitle);
+    console.error('❌ Recipe not found after Gemini identification:', identifiedRecipeName);
     return NextResponse.json(
       { error: 'Recipe not found', shopping_list: currentShoppingList },
       { status: 200 } // Return current list unchanged
