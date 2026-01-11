@@ -33,7 +33,7 @@ export function VoicePanel({
   }, [conversationMessages]);
 
   return (
-    <div className="bg-gradient-to-br from-[#14B8A6] via-[#14B8A6] to-[#10B981] rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-full min-h-[600px] flex flex-col">
+    <div className="bg-gradient-to-br from-[#14B8A6] via-[#14B8A6] to-[#10B981] rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-[calc(100vh-120px)] flex flex-col">
       {/* Top Section - Header */}
       <div className="mb-4 flex-shrink-0">
         <div className="flex items-center gap-3 mb-2">
@@ -47,12 +47,11 @@ export function VoicePanel({
         </div>
       </div>
 
-      {/* Center - Conversation Area */}
-      <div className="flex flex-col mb-4 overflow-hidden relative" style={{ height: 'calc(100vh - 300px)', maxHeight: '500px' }}>
-
+      {/* Center - Conversation Area (Scrollable) */}
+      <div className="flex-1 min-h-0 mb-4 overflow-hidden flex flex-col">
         {!isConversationActive && conversationMessages.length === 0 ? (
           // Empty State
-          <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="flex-1 flex flex-col items-center justify-center min-h-[150px]">
             <div className="w-24 h-24 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center mb-4">
               <Bot className="w-12 h-12 text-white/80" />
             </div>
@@ -60,11 +59,10 @@ export function VoicePanel({
             <p className="text-white/70 text-sm">Press the mic to begin</p>
           </div>
         ) : (
-          // Conversation Messages - Fixed height scrollable container
+          // Conversation Messages - Scrollable container
           <div
             ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto pr-2 space-y-3 z-0"
-            style={{ minHeight: 0 }}
+            className="flex-1 overflow-y-auto pr-2 space-y-3 min-h-0"
           >
             {conversationMessages.map((message, index) => (
               <div
@@ -128,7 +126,7 @@ export function VoicePanel({
         )}
       </div>
 
-      {/* Bottom - Microphone Button */}
+      {/* Bottom - Microphone Button (Fixed) */}
       <div className="flex flex-col items-center flex-shrink-0">
         <div className="relative w-24 h-24 flex items-center justify-center">
           {/* Radar Pulses - Light grey transparent, only when idle */}
@@ -181,42 +179,48 @@ export function VoicePanel({
           </button>
         </div>
 
-        {/* Wave Bars Animation */}
-        {(isUserSpeaking || isAISpeaking) && (
-          <div className="flex items-end justify-center gap-1.5 mt-3 h-8">
-            {[...Array(5)].map((_, i) => (
-              <div
-                key={i}
-                className="w-1.5 bg-white rounded-full animate-wave-bar"
-                style={{
-                  animationDelay: `${i * 0.1}s`,
-                  height: `${10 + Math.random() * 20}px`,
-                }}
-              />
-            ))}
-          </div>
-        )}
+        {/* Wave Bars Animation - Fixed height to prevent layout shift */}
+        <div className="h-8 mt-3 flex items-end justify-center">
+          {(isUserSpeaking || isAISpeaking) && (
+            <div className="flex items-end justify-center gap-1.5">
+              {[...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  className="w-1.5 bg-white rounded-full animate-wave-bar"
+                  style={{
+                    animationDelay: `${i * 0.1}s`,
+                    height: `${10 + Math.random() * 20}px`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
-        {/* Text Below Button */}
-        <p className="mt-4 text-white/90 text-sm font-medium">
-          {isIdle && 'Press to talk'}
-          {isPaused && 'Paused - Click to resume'}
-          {isUserSpeaking && 'Recording...'}
-          {isAISpeaking && 'AI Speaking...'}
-          {isConversationActive && !isPaused && !isUserSpeaking && !isAISpeaking && micState !== 'idle' && 'Listening...'}
-        </p>
+        {/* Text Below Button - Fixed height to prevent layout shift */}
+        <div className="mt-4 h-5 flex items-center justify-center">
+          <p className="text-white/90 text-sm font-medium">
+            {isIdle && 'Press to talk'}
+            {isPaused && 'Paused - Click to resume'}
+            {isUserSpeaking && 'Recording...'}
+            {isAISpeaking && 'AI Speaking...'}
+            {isConversationActive && !isPaused && !isUserSpeaking && !isAISpeaking && micState !== 'idle' && 'Listening...'}
+          </p>
+        </div>
         
-        {/* Pause/Resume hint */}
-        {isConversationActive && !isPaused && (
-          <p className="mt-1 text-white/60 text-xs">
-            Click mic to pause
-          </p>
-        )}
-        {isPaused && (
-          <p className="mt-1 text-white/60 text-xs">
-            Click mic to resume
-          </p>
-        )}
+        {/* Pause/Resume hint - Fixed height to prevent layout shift */}
+        <div className="h-4 mt-1 flex items-center justify-center">
+          {isConversationActive && !isPaused && (
+            <p className="text-white/60 text-xs">
+              Click mic to pause
+            </p>
+          )}
+          {isPaused && (
+            <p className="text-white/60 text-xs">
+              Click mic to resume
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

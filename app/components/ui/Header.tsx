@@ -1,4 +1,4 @@
-import { ShoppingCart, Mic } from 'lucide-react';
+import { ShoppingCart } from 'lucide-react';
 
 interface HeaderProps {
   cartItemCount: number;
@@ -12,8 +12,16 @@ export function Header({ cartItemCount, totalCost }: HeaderProps) {
         <div className="flex items-center justify-between">
           {/* Logo/Branding */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#10B981] to-[#14B8A6] rounded-xl flex items-center justify-center">
-              <Mic className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 bg-gradient-to-br from-[#10B981] to-[#14B8A6] rounded-xl flex items-center justify-center overflow-hidden relative">
+              <img 
+                src="/cart-logo1.png" 
+                alt="Cartify Logo" 
+                className="w-12 h-12 object-contain"
+                onError={(e) => {
+                  console.error('Failed to load cart-logo1.png');
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
             </div>
             <div>
               <h1 className="font-bold text-xl text-gray-900">Cartify</h1>

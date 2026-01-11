@@ -20,9 +20,9 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6">
+      <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-[calc(100vh-120px)] flex flex-col">
         {/* Header */}
-        <div className="mb-6">
+        <div className="mb-4 flex-shrink-0">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Recipes You Can Make</h2>
           
           {/* Filter Chips */}
@@ -44,18 +44,19 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
         </div>
 
         {/* Recipe Grid */}
-        {isGenerating && recipes.length === 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="bg-gray-100 rounded-xl aspect-video animate-shimmer" />
-            ))}
-          </div>
-        ) : filteredRecipes.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-400 text-sm">No recipes yet. Speak or type your meal request to get started!</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[700px] overflow-y-auto pr-2">
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {isGenerating && recipes.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-gray-100 rounded-xl aspect-video animate-shimmer" />
+              ))}
+            </div>
+          ) : filteredRecipes.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-400 text-sm">No recipes yet. Speak or type your meal request to get started!</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 h-full">
             {filteredRecipes.map((recipe, index) => (
               <RecipeCard
                 key={recipe.id}
@@ -64,8 +65,9 @@ export function RecipePanel({ recipes, isGenerating = false }: RecipePanelProps)
                 index={index}
               />
             ))}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Recipe Modal */}

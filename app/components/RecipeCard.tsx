@@ -50,9 +50,7 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
         
         {/* Match Percentage Badge */}
         <div
-          className={`absolute top-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full flex items-center gap-1 transition-all duration-300 ${
-            recipe.matchPercentage === 100 ? 'animate-shimmer-badge' : ''
-          }`}
+          className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full flex items-center gap-1 transition-all duration-300"
           style={{
             animationName: recipe.matchPercentage === 100 ? 'scale-in' : 'none',
             animationDuration: recipe.matchPercentage === 100 ? '0.4s' : undefined,

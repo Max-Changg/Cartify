@@ -72,9 +72,9 @@ export function ShoppingCartPanel({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-fit sticky top-24">
+    <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.1)] p-6 h-[calc(100vh-120px)] flex flex-col">
       {/* Header */}
-      <div className="mb-4">
+      <div className="mb-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-xl font-semibold text-gray-900">Shopping Cart</h2>
           {isProcessing && (
@@ -92,8 +92,8 @@ export function ShoppingCartPanel({
       </div>
 
       {/* Shopping Cart List */}
-      <div className="mb-4">
-        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+      <div className="flex-1 min-h-0 mb-4 overflow-hidden flex flex-col">
+        <div className="space-y-2 overflow-y-auto pr-2 flex-1 min-h-0">
           {cartItems.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-400 text-sm">Your cart is empty</p>
@@ -116,7 +116,7 @@ export function ShoppingCartPanel({
       </div>
 
       {/* Subtotal */}
-      <div className="border-t border-gray-200 pt-4 mb-4">
+      <div className="border-t border-gray-200 pt-4 mb-4 flex-shrink-0">
         <div className="flex justify-between items-center">
           <span className="text-gray-600 font-medium">Subtotal:</span>
           <span
@@ -130,7 +130,7 @@ export function ShoppingCartPanel({
       </div>
 
       {/* Action Buttons */}
-      <div className="space-y-3">
+      <div className="space-y-3 flex-shrink-0">
         <button 
           onClick={onQuickPurchase}
           disabled={isProcessing || cartItems.length === 0}
