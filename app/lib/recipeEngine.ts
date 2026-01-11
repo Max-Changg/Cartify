@@ -2,12 +2,18 @@
 import OpenAI from "openai"
 import { AMAZON_FRESH_MOCK } from "../../data/amazon_fresh_mock"
 
+let openai: OpenAI | null = null; // Lazy initialization
+
 function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not set');
+  if (!openai) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not set.");
+    }
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
   }
-  return new OpenAI({ apiKey });
+  return openai;
 }
 
 function extractJSON(text: string) {
@@ -21,8 +27,8 @@ function extractJSON(text: string) {
 }
 
 export async function generateRecipes(prompt: string) {
-  const openai = getOpenAIClient();
-  const response = await openai.chat.completions.create({
+  const client = getOpenAIClient(); // Get client
+  const response = await client.chat.completions.create({
     model: "gpt-4.1-mini",
     temperature: 0.4,
     messages: [
