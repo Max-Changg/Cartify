@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
       excludedItems,
       currentRecipes,
       userRequest,
-      currentShoppingList
+      currentShoppingList,
+      recipeTitle
     } = body;
 
     switch (action) {
@@ -38,6 +39,9 @@ export async function POST(request: NextRequest) {
       
       case 'regenerate_recipes':
         return await regenerateRecipes(userRequest, currentRecipes, healthGoals, cuisinePreferences, excludedItems || []);
+      
+      case 'add_recipe_ingredients':
+        return await addRecipeIngredients(userRequest, recipeTitle, currentShoppingList, currentRecipes);
       
       default:
         return NextResponse.json(
@@ -213,21 +217,21 @@ Return ONLY a JSON array with this exact structure, no other text:
 
 async function generateShoppingList(recipes: any[]) {
   const allIngredients = recipes.flatMap((r: any) => r.ingredients);
-  const prompt = `Consolidate these ingredients into a shopping list with quantities:
+  const prompt = `Consolidate these ingredients into a shopping list:
 ${allIngredients.join(', ')}
 
-IMPORTANT: Return ONLY the top 10 MOST ESSENTIAL items. Prioritize:
-1. Main proteins and produce
-2. Items needed across multiple recipes
-3. Core ingredients that are not common pantry staples
+IMPORTANT: 
+- Return ONLY the top 10 MOST ESSENTIAL items
+- Each item should have quantity: "1" (always use 1 as the default quantity)
+- Prioritize: Main proteins, produce, and core ingredients
 
-The user can add more items later through voice commands.
+The user can adjust quantities later through voice commands.
 
 Return ONLY a JSON array with this structure (MAX 10 items), no other text:
 [
   {
     "item": "Item name",
-    "quantity": "Amount needed",
+    "quantity": "1",
     "category": "produce/protein/dairy/pantry/other",
     "estimatedPrice": 2.99
   }
@@ -587,5 +591,143 @@ Return ONLY a JSON array with this exact structure, no other text:
   } catch (err: any) {
     console.error('Recipe regeneration error:', err);
     throw new Error('Failed to regenerate recipes: ' + err.message);
+  }
+}
+
+async function addRecipeIngredients(
+  userRequest: string,
+  recipeTitle: string,
+  currentShoppingList: any[],
+  currentRecipes: any[]
+) {
+  console.log('🍳 addRecipeIngredients called:', {
+    userRequest,
+    recipeTitle,
+    currentShoppingListLength: currentShoppingList?.length || 0,
+    currentRecipesLength: currentRecipes?.length || 0
+  });
+
+  // Find the recipe by title (fuzzy match)
+  const targetRecipe = currentRecipes.find((recipe: any) => {
+    const title = (recipe.name || recipe.title || '').toLowerCase();
+    const searchTerm = recipeTitle.toLowerCase();
+    return title.includes(searchTerm) || searchTerm.includes(title);
+  });
+
+  if (!targetRecipe) {
+    console.error('❌ Recipe not found:', recipeTitle);
+    return NextResponse.json(
+      { error: 'Recipe not found', shopping_list: currentShoppingList },
+      { status: 200 } // Return current list unchanged
+    );
+  }
+
+  console.log('✅ Found recipe:', targetRecipe.name || targetRecipe.title);
+
+  const recipeIngredients = targetRecipe.ingredients || [];
+  const currentListText = (currentShoppingList || []).map(item => 
+    `- ${item.name || 'Unknown'}`
+  ).join('\n') || '(Empty list)';
+
+  const recipeIngredientsText = recipeIngredients.join(', ');
+
+  const prompt = `The user has this shopping list:
+${currentListText}
+
+The user wants to make this recipe: "${targetRecipe.name || targetRecipe.title}"
+Recipe ingredients: ${recipeIngredientsText}
+
+TASK: Compare the recipe ingredients with the current shopping list. Add any missing ingredients to the list with quantity "1".
+
+RULES:
+1. Keep ALL existing items in the list (same quantity, same price, same name)
+2. For each recipe ingredient NOT in the current list, add it with:
+   - quantity: "1"
+   - estimatedPrice: realistic grocery price (number)
+   - category: appropriate category
+3. Use smart matching (e.g., "chicken breast" matches "chicken", "tomato" matches "tomatoes")
+4. If an ingredient is already in the list, DO NOT add it again
+5. Return the COMPLETE updated shopping list (existing + new items)
+
+Return ONLY a raw JSON array with NO explanations, NO markdown, NO extra text:
+[
+  {
+    "item": "Item name",
+    "quantity": "1",
+    "category": "produce/protein/dairy/pantry/other",
+    "estimatedPrice": 2.99
+  }
+]`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 2000,
+            responseMimeType: "application/json",
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const textContent = data.candidates[0]?.content?.parts[0]?.text || "";
+    console.log('📄 Raw Gemini response:', textContent.substring(0, 200));
+
+    // Remove markdown code blocks
+    let cleanedText = textContent.replace(/```json|```/g, "").trim();
+
+    // Extract JSON array if there's extra text
+    const jsonMatch = cleanedText.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      cleanedText = jsonMatch[0];
+    }
+
+    let shoppingList;
+    try {
+      shoppingList = JSON.parse(cleanedText);
+    } catch (parseError: any) {
+      console.error('❌ JSON parse error:', parseError.message);
+      console.error('Attempted to parse:', cleanedText.substring(0, 200));
+      throw new Error('Gemini returned invalid JSON format');
+    }
+
+    // Validate prices
+    const itemsWithoutPrice = shoppingList.filter((item: any) => 
+      !item.estimatedPrice || typeof item.estimatedPrice !== 'number' || item.estimatedPrice <= 0
+    );
+
+    if (itemsWithoutPrice.length > 0) {
+      console.warn('⚠️ Some items missing valid prices:', itemsWithoutPrice);
+      shoppingList = shoppingList.map((item: any) => ({
+        ...item,
+        estimatedPrice: item.estimatedPrice && typeof item.estimatedPrice === 'number' && item.estimatedPrice > 0
+          ? item.estimatedPrice
+          : 2.99
+      }));
+    }
+
+    const totalCost = shoppingList.reduce((sum: number, item: any) => sum + (item.estimatedPrice || 0), 0);
+    console.log('✅ Updated list with recipe ingredients:', shoppingList.length, 'items');
+    console.log('💰 Total cost:', `$${totalCost.toFixed(2)}`);
+
+    return NextResponse.json({ shopping_list: shoppingList });
+  } catch (err: any) {
+    console.error('Recipe ingredient addition error:', err);
+    throw new Error('Failed to add recipe ingredients: ' + err.message);
   }
 }
