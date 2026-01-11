@@ -206,6 +206,75 @@ export default function HomePage() {
     await playAgentAudio(combinedPcm.buffer);
   };
 
+  const triggerAgentFeedback = async (actionType: string) => {
+    console.log('📢 Triggering feedback for action:', actionType);
+    
+    // Determine the feedback message based on action type
+    let feedbackMessage = '';
+    switch (actionType) {
+      case 'generate_initial':
+        feedbackMessage = 'Done! How does the list look? Would you like me to add or remove anything?';
+        break;
+      case 'refine_shopping_list':
+        feedbackMessage = 'Done! How does the list look now? Would you like any other changes?';
+        break;
+      case 'regenerate_recipes':
+        feedbackMessage = 'Done! How do these recipes look? Would you like any changes?';
+        break;
+    }
+    
+    if (!feedbackMessage) return;
+    
+    // Use Text-to-Speech to speak the feedback message
+    // We'll use the Deepgram TTS to maintain consistency with the agent's voice
+    try {
+      console.log('📢 Synthesizing feedback message:', feedbackMessage);
+      
+      // Call Deepgram TTS API
+      const response = await fetch('/api/ai-agent/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: feedbackMessage,
+          voice: 'aura-2-thalia-en' // Same voice as the agent
+        }),
+      });
+      
+      if (response.ok) {
+        const audioData = await response.arrayBuffer();
+        console.log('📢 Got TTS audio, playing feedback...');
+        
+        // Add the audio message to conversation display
+        const feedbackMsg: ConversationMessage = {
+          speaker: 'assistant',
+          text: feedbackMessage,
+          timestamp: new Date(),
+        };
+        setConversationMessages(prev => [...prev, feedbackMsg]);
+        conversationMessagesRef.current = [...conversationMessagesRef.current, feedbackMsg];
+        lastAgentMessageRef.current = feedbackMessage;
+        
+        // Play the TTS audio
+        await playAgentAudio(audioData);
+        
+      } else {
+        console.error('❌ Failed to synthesize feedback:', response.status);
+        // Fallback: just add the message to conversation
+        const feedbackMsg: ConversationMessage = {
+          speaker: 'assistant',
+          text: feedbackMessage,
+          timestamp: new Date(),
+        };
+        setConversationMessages(prev => [...prev, feedbackMsg]);
+        conversationMessagesRef.current = [...conversationMessagesRef.current, feedbackMsg];
+        lastAgentMessageRef.current = feedbackMessage;
+      }
+      
+    } catch (err) {
+      console.error('❌ Error in triggerAgentFeedback:', err);
+    }
+  };
+
   const refineShoppingList = async (userRequest: string) => {
     if (isGeneratingRecipes) {
       console.log('⚠️ Already generating, skipping refinement');
@@ -241,9 +310,15 @@ export default function HomePage() {
       const { shopping_list } = await response.json();
       console.log('✅ Refined shopping list:', shopping_list);
 
-      // Convert to CartItem format and update cart
-      const newCartItems: CartItem[] = (Array.isArray(shopping_list) ? shopping_list : []).map((item: any, index: number) => {
-        // Parse price - handle both number and string formats
+      // Convert to CartItem format and merge with existing items
+      const newCartItems: CartItem[] = [];
+      const processedItems = new Set<string>();
+      
+      // First, process items from the API response
+      (Array.isArray(shopping_list) ? shopping_list : []).forEach((item: any) => {
+        const itemName = (item.item || item.name || 'Unknown Item').toLowerCase().trim();
+        
+        // Parse price
         let price = 0;
         if (item.estimatedPrice !== undefined && item.estimatedPrice !== null) {
           price = typeof item.estimatedPrice === 'number' ? item.estimatedPrice : parseFloat(item.estimatedPrice) || 0;
@@ -251,19 +326,39 @@ export default function HomePage() {
           price = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0;
         }
         
-        // Warn if price is missing or invalid
-        if (price === 0) {
-          console.warn(`⚠️ Item "${item.item || item.name}" has no valid price, defaulting to $0.00`);
+        // Parse quantity from API (Gemini might return "2" as string)
+        let quantity = 1;
+        if (item.quantity !== undefined && item.quantity !== null) {
+          quantity = typeof item.quantity === 'number' ? item.quantity : parseInt(item.quantity) || 1;
         }
         
-        return {
-          id: `cart-${Date.now()}-${index}`,
-          name: item.item || item.name || 'Unknown Item',
-          quantity: 1,
-          price: price,
-          enabled: true,
-          brand: item.brand,
-        };
+        // Check if this item already exists in current cart
+        const existingItem = currentShoppingListRef.current.find(
+          cartItem => cartItem.name.toLowerCase().trim() === itemName
+        );
+        
+        if (existingItem) {
+          // Update existing item with new quantity
+          newCartItems.push({
+            ...existingItem,
+            quantity: quantity, // Use the quantity from Gemini's response
+            price: price > 0 ? price : existingItem.price, // Keep existing price if new one is 0
+          });
+          console.log(`✅ Updated "${existingItem.name}" quantity to ${quantity}`);
+        } else {
+          // Create new item
+          newCartItems.push({
+            id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: item.item || item.name || 'Unknown Item',
+            quantity: quantity,
+            price: price,
+            enabled: true,
+            brand: item.brand,
+          });
+          console.log(`✅ Added new item "${item.item || item.name}" with quantity ${quantity}`);
+        }
+        
+        processedItems.add(itemName);
       });
 
       if (newCartItems.length > 0) {
@@ -272,7 +367,7 @@ export default function HomePage() {
         console.log('✅ Shopping cart updated with', newCartItems.length, 'items');
         
         // Log pricing summary for debugging
-        const totalPrice = newCartItems.reduce((sum, item) => sum + item.price, 0);
+        const totalPrice = newCartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         console.log('💰 Total estimated cost:', `$${totalPrice.toFixed(2)}`);
         const itemsWithoutPrice = newCartItems.filter(item => item.price === 0);
         if (itemsWithoutPrice.length > 0) {
@@ -397,6 +492,12 @@ export default function HomePage() {
             price = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0;
           }
           
+          // Parse quantity
+          let quantity = 1;
+          if (item.quantity !== undefined && item.quantity !== null) {
+            quantity = typeof item.quantity === 'number' ? item.quantity : parseInt(item.quantity) || 1;
+          }
+          
           // Warn if price is missing or invalid
           if (price === 0) {
             console.warn(`⚠️ Item "${item.item || item.name}" has no valid price, defaulting to $0.00`);
@@ -405,7 +506,7 @@ export default function HomePage() {
           return {
             id: `cart-${Date.now()}-${index}`,
             name: item.item || item.name || 'Unknown Item',
-            quantity: 1,
+            quantity: quantity,
             price: price,
             enabled: true,
             brand: item.brand,
@@ -418,7 +519,7 @@ export default function HomePage() {
           console.log('✅ Shopping cart updated with', newCartItems.length, 'items');
           
           // Log pricing summary for debugging
-          const totalPrice = newCartItems.reduce((sum, item) => sum + item.price, 0);
+          const totalPrice = newCartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
           console.log('💰 Total estimated cost:', `$${totalPrice.toFixed(2)}`);
           const itemsWithoutPrice = newCartItems.filter(item => item.price === 0);
           if (itemsWithoutPrice.length > 0) {
@@ -551,7 +652,7 @@ export default function HomePage() {
       
       console.log('✅ Generated shopping list:', shopping_list);
 
-      // Convert to CartItem format and add to cart
+      // Convert to CartItem format (for initial generation, just create new items)
       const newCartItems: CartItem[] = (Array.isArray(shopping_list) ? shopping_list : []).map((item: any, index: number) => {
         // Parse price - handle both number and string formats
         let price = 0;
@@ -559,6 +660,12 @@ export default function HomePage() {
           price = typeof item.estimatedPrice === 'number' ? item.estimatedPrice : parseFloat(item.estimatedPrice) || 0;
         } else if (item.price !== undefined && item.price !== null) {
           price = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0;
+        }
+        
+        // Parse quantity from API
+        let quantity = 1;
+        if (item.quantity !== undefined && item.quantity !== null) {
+          quantity = typeof item.quantity === 'number' ? item.quantity : parseInt(item.quantity) || 1;
         }
         
         // Warn if price is missing or invalid
@@ -569,7 +676,7 @@ export default function HomePage() {
         return {
           id: `cart-${Date.now()}-${index}`,
           name: item.item || item.name || 'Unknown Item',
-          quantity: 1, // CartItem uses 'quantity'
+          quantity: quantity,
           price: price,
           enabled: true,
           brand: item.brand,
@@ -583,7 +690,7 @@ export default function HomePage() {
         console.log('✅ Shopping cart populated with', newCartItems.length, 'items');
         
         // Log pricing summary for debugging
-        const totalPrice = newCartItems.reduce((sum, item) => sum + item.price, 0);
+        const totalPrice = newCartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         console.log('💰 Total estimated cost:', `$${totalPrice.toFixed(2)}`);
         const itemsWithoutPrice = newCartItems.filter(item => item.price === 0);
         if (itemsWithoutPrice.length > 0) {
@@ -682,18 +789,20 @@ YOUR ROLE: Continue from where you left off. You should:
 FEEDBACK LOOP:
 - Ask: "How does the shopping list look? Would you like me to add or remove anything?"
 - Listen for their response:
-  - If they want changes → acknowledge and say the appropriate trigger phrase
+  - If they want changes → acknowledge and say the appropriate trigger phrase, then STOP
   - If they say "everything looks good" / "looks great" / "that's perfect" → say EXACTLY: "Great! When you're ready, click the purchase button and I'll fill in your cart for you."
 
-REFINEMENT TRIGGERS:
-- If user wants to modify shopping list → say EXACTLY: "Let me update your shopping list." THEN ask: "How does the list look now?"
-- If user wants different recipes → say EXACTLY: "Let me find different recipes for you." THEN ask: "How does everything look?"
+REFINEMENT TRIGGERS (STOP AFTER THESE):
+- If user wants to modify shopping list → say EXACTLY: "Let me update your shopping list." then STOP (system will provide feedback)
+- If user wants different recipes → say EXACTLY: "Let me find different recipes for you." then STOP (system will provide feedback)
+
+IMPORTANT: After trigger phrases, DO NOT ask follow-up questions. The system handles that.
 
 Keep responses short (1-2 sentences). Be warm and conversational.
 
-CRITICAL TRIGGER PHRASES (say these EXACTLY):
-- "Let me update your shopping list." = Modify shopping list
-- "Let me find different recipes for you." = Regenerate recipes
+CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
+- "Let me update your shopping list." = Modify shopping list → STOP
+- "Let me find different recipes for you." = Regenerate recipes → STOP
 - "Great! When you're ready, click the purchase button and I'll fill in your cart for you." = User is done`;
         } else {
           // Fresh start or resume without context
@@ -709,13 +818,15 @@ INITIAL CONVERSATION:
 FEEDBACK LOOP (after generation or modification):
 4. ALWAYS ask for feedback after the list updates: "How does the shopping list look? Would you like me to add or remove anything?"
 5. Listen for their response:
-   - If they want changes → acknowledge and say the appropriate trigger phrase (see below)
+   - If they want changes → acknowledge and say the appropriate trigger phrase (see below), then STOP and wait for system to respond
    - If they say "everything looks good" / "looks great" / "that's perfect" / "I'm happy with it" → say EXACTLY: "Great! When you're ready, click the purchase button and I'll fill in your cart for you."
    - If unclear → ask a clarifying question
 
-REFINEMENT TRIGGERS:
-- If user wants to modify shopping list (e.g., "add more protein", "remove soy sauce", "I already have X") → say EXACTLY: "Let me update your shopping list." THEN after update, ask again: "How does the list look now? Any other changes?"
-- If user wants different recipes (e.g., "show me different recipes", "I don't like these") → say EXACTLY: "Let me find different recipes for you." THEN after update, ask again: "How does everything look? Would you like any changes?"
+REFINEMENT TRIGGERS (CRITICAL - STOP AFTER THESE):
+- If user wants to modify shopping list → say EXACTLY: "Let me update your shopping list." then STOP TALKING (the system will handle the rest)
+- If user wants different recipes → say EXACTLY: "Let me find different recipes for you." then STOP TALKING (the system will handle the rest)
+
+IMPORTANT: After saying a trigger phrase, DO NOT continue with questions like "How does it look?" or "Any changes?". The system will provide that feedback automatically.
 
 FINAL CONFIRMATION:
 - Only when user explicitly indicates they're happy with the list (e.g., "looks good", "perfect", "I'm done"), say the purchase button message
@@ -723,10 +834,10 @@ FINAL CONFIRMATION:
 
 Keep responses short (1-2 sentences). Be warm and conversational.
 
-CRITICAL TRIGGER PHRASES (say these EXACTLY):
-- "Perfect! Let me generate some recipes for you." = Initial generation
-- "Let me update your shopping list." = Modify shopping list
-- "Let me find different recipes for you." = Regenerate recipes
+CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
+- "Perfect! Let me generate some recipes for you." = Initial generation → STOP
+- "Let me update your shopping list." = Modify shopping list → STOP
+- "Let me find different recipes for you." = Regenerate recipes → STOP
 - "Great! When you're ready, click the purchase button and I'll fill in your cart for you." = User is done, ready for checkout`;
         }
         
@@ -1025,17 +1136,31 @@ CRITICAL TRIGGER PHRASES (say these EXACTLY):
           console.log('🚀 Executing pending action:', action.type);
           
           // Wait a bit to ensure audio playback is fully complete
-          setTimeout(() => {
+          setTimeout(async () => {
+            let shouldProvideFeedback = false;
+            
             switch (action.type) {
               case 'generate_initial':
-                generateRecipesAndShoppingList();
+                await generateRecipesAndShoppingList();
+                shouldProvideFeedback = true;
                 break;
               case 'refine_shopping_list':
-                refineShoppingList(action.data);
+                await refineShoppingList(action.data);
+                shouldProvideFeedback = true;
                 break;
               case 'regenerate_recipes':
-                regenerateRecipes(action.data);
+                await regenerateRecipes(action.data);
+                shouldProvideFeedback = true;
                 break;
+            }
+            
+            // After action completes, make agent ask for feedback
+            if (shouldProvideFeedback && connectionRef.current) {
+              console.log('📢 Triggering agent feedback prompt...');
+              // Inject a user message to trigger agent response
+              setTimeout(() => {
+                triggerAgentFeedback(action.type);
+              }, 1000);
             }
           }, 500); // Short delay to ensure smooth transition
         }
