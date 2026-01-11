@@ -17,6 +17,47 @@ interface VoicePanelProps {
   isProcessing?: boolean;
 }
 
+    const handleQuickPurchase = async () => {
+      const enabledItems = cartItems.filter(item => item.enabled);
+
+      if (enabledItems.length === 0) {
+        setError('No items selected for purchase');
+        return;
+      }
+
+      setIsProcessing(true);
+      setError(null);
+
+      try {
+        for (const item of enabledItems) {
+          console.log('🛒 Sending to Weee:', item.name);
+
+          const res = await fetch('/api/weee/add-to-cart', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              itemName: item.name,
+            }),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            console.error(`❌ Failed to add ${item.name}:`, errText);
+          }
+        }
+
+        alert('✅ Items sent to Weee!');
+      } catch (err) {
+        console.error('❌ Weee purchase failed:', err);
+        setError('Failed to add items to Weee');
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+
 export function VoicePanel({
   cartItems,
   micState,
@@ -111,13 +152,8 @@ export function VoicePanel({
 
       {/* Action Buttons */}
       <div className="space-y-3">
-        <button 
-          onClick={onQuickPurchase}
-          disabled={isProcessing || cartItems.length === 0}
-          className="w-full bg-[#10B981] hover:bg-[#059669] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors"
-        >
-          Quick Purchase via Weee!
-        </button>
+
+
         <button 
           onClick={onExportList}
           disabled={isProcessing || cartItems.length === 0}

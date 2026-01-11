@@ -384,6 +384,43 @@ export default function HomePage() {
     }
   };
 
+const handleQuickPurchase = async () => {
+  const enabledItems = cartItems.filter(item => item.enabled)
+
+  if (enabledItems.length === 0) {
+    setError('No items selected for purchase')
+    return
+  }
+
+  setIsProcessing(true)
+
+  try {
+    const res = await fetch('/api/weee/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: enabledItems.map(item => ({
+          name: item.name,       // ✅ string only
+          quantity: item.quantity
+        })),
+      }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) throw new Error(data.error)
+
+    console.log('✅ Weee results:', data.results)
+    alert('✅ Items added to Weee!')
+  } catch (err) {
+    console.error(err)
+    setError('Failed to add items to Weee')
+  } finally {
+    setIsProcessing(false)
+  }
+};
+
+
   const addToCart = (ingredient: Ingredient) => {
     const existingItem = cartItems.find(item => item.id === ingredient.id);
 
@@ -482,38 +519,7 @@ export default function HomePage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleQuickPurchase = () => {
-    const enabledItems = cartItems.filter(item => item.enabled);
-    if (enabledItems.length === 0) {
-      setError('No items selected for purchase');
-      return;
-    }
 
-    // Create a formatted list for Weee! or copy to clipboard
-    const itemsList = enabledItems.map(item => 
-      `${item.quantity}x ${item.name}`
-    ).join('\n');
-
-    // Copy to clipboard as fallback
-    navigator.clipboard.writeText(itemsList).then(() => {
-      alert('Items copied to clipboard! You can paste them into Weee! or your preferred shopping app.');
-    }).catch(() => {
-      // Fallback: open a new window with the list
-      const newWindow = window.open('', '_blank');
-      if (newWindow) {
-        newWindow.document.write(`
-          <html>
-            <head><title>Shopping List</title></head>
-            <body>
-              <h1>Shopping List</h1>
-              <pre>${itemsList}</pre>
-              <p>Total: $${totalCost.toFixed(2)}</p>
-            </body>
-          </html>
-        `);
-      }
-    });
-  };
 
   const totalCost = cartItems
     .filter(item => item.enabled)
@@ -579,7 +585,7 @@ export default function HomePage() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-40">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-40">
         <div className="flex items-center justify-between max-w-[1600px] mx-auto">
           <div className="flex-1">
             <p className="text-xs text-gray-500">Total</p>
@@ -598,6 +604,13 @@ export default function HomePage() {
           >
             <Mic className="w-6 h-6 text-white" />
           </button>
+          <button 
+            onClick={handleQuickPurchase}
+            className="flex-1 text-right bg-[#10B981] hover:bg-[#059669] text-white font-semibold py-3 px-4 rounded-xl transition-colors ml-3"
+          >
+          Quick Purchase via Weee!
+        </button>
+
           <button 
             onClick={handleQuickPurchase}
             className="flex-1 text-right bg-[#10B981] hover:bg-[#059669] text-white font-semibold py-3 px-4 rounded-xl transition-colors ml-3"

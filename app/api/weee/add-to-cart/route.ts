@@ -1,51 +1,45 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { addItemToWeeeCart } from '@/lib/weee-browser'
+import { NextRequest, NextResponse } from "next/server";
+import { addItemToWeeeCart } from "@/lib/weee-browser";
 
-/**
- * API endpoint to add items to Weee! cart
- * 
- * POST /api/weee/add-to-cart
- * Body: { itemName: string }
- * 
- * Example:
- * curl -X POST http://localhost:3000/api/weee/add-to-cart \
- *   -H "Content-Type: application/json" \
- *   -d '{"itemName":"apple"}'
- */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { itemName } = body
-    
-    if (!itemName || typeof itemName !== 'string') {
+    const body = await request.json();
+    const { items } = body;
+    console.log('[WEEE ADD TO CART] itemName received:', items);
+
+    if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Item name is required',
-        },
+        { success: false, error: "Items array is required" },
         { status: 400 }
-      )
+      );
     }
-    
-    console.log(`📥 Received request to add item: "${itemName}"`)
-    
-    // Add item to cart using the browser automation function
-    const result = await addItemToWeeeCart(itemName)
-    
-    if (result.success) {
-      return NextResponse.json(result, { status: 200 })
-    } else {
-      return NextResponse.json(result, { status: 400 })
+
+    let successCount = 0;
+    const failures: string[] = [];
+
+    for (const itemName of items) {
+      try {
+        const result = await addItemToWeeeCart(itemName);
+        if (result.success) {
+          successCount++;
+        } else {
+          failures.push(itemName);
+        }
+      } catch {
+        failures.push(itemName);
+      }
     }
+
+    return NextResponse.json({
+      success: true,
+      added: successCount,
+      failed: failures,
+    });
   } catch (error) {
-    console.error('❌ Error in add-to-cart endpoint:', error)
-    
+    console.error("❌ Weee bulk add error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
+      { success: false, error: "Internal server error" },
       { status: 500 }
-    )
+    );
   }
 }
