@@ -30,7 +30,7 @@ export interface Ingredient {
   available: string[];
 }
 
-export type MicrophoneState = 'idle' | 'listening' | 'processing' | 'success';
+export type MicrophoneState = 'idle' | 'listening' | 'processing' | 'success' | 'paused';
 
 // AI Agent conversation types
 export type ConversationState = 'initial' | 'asking_health' | 'asking_cuisine' | 'generating_recipes' | 'generating_shopping' | 'complete';

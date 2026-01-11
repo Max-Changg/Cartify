@@ -97,11 +97,14 @@ async function generateRecipes(healthGoals: string, cuisinePreferences: string, 
 - Cuisine preferences: ${cuisinePreferences}
 ${excludedText}
 
+IMPORTANT: Include a mix of meal types (breakfast, lunch, dinner, dessert) when possible.
+
 Return ONLY a JSON array with this exact structure, no other text:
 [
   {
     "name": "Recipe Name",
     "cuisine": "Cuisine Type",
+    "mealType": "breakfast/lunch/dinner/dessert",
     "servings": 4,
     "prepTime": "30 mins",
     "healthBenefits": "Brief health benefit",
@@ -138,7 +141,45 @@ Return ONLY a JSON array with this exact structure, no other text:
     const cleanedText = textContent.replace(/```json|```/g, "").trim();
     const recipes = JSON.parse(cleanedText);
     
-    return NextResponse.json({ recipes });
+    // Fetch images for all recipes in parallel
+    const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+    const recipesWithImages = await Promise.all(
+      recipes.map(async (recipe: any) => {
+        let imageUrl = '';
+        
+        // Fetch image from Unsplash API
+        if (UNSPLASH_ACCESS_KEY && recipe.name) {
+          try {
+            const query = `${recipe.name} food recipe`;
+            const unsplashUrl = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape&client_id=${UNSPLASH_ACCESS_KEY}`;
+            const unsplashResponse = await fetch(unsplashUrl);
+            
+            if (unsplashResponse.ok) {
+              const unsplashData = await unsplashResponse.json();
+              if (unsplashData.results && unsplashData.results.length > 0) {
+                imageUrl = unsplashData.results[0].urls.regular || 
+                           unsplashData.results[0].urls.small || 
+                           unsplashData.results[0].urls.thumb;
+              }
+            }
+          } catch (error) {
+            console.log(`Failed to fetch image for ${recipe.name}:`, error);
+          }
+        }
+        
+        // Fallback to Unsplash Source API if no image found
+        if (!imageUrl && recipe.name) {
+          imageUrl = `https://source.unsplash.com/800x600/?${encodeURIComponent(recipe.name + ' food')}`;
+        }
+        
+        return {
+          ...recipe,
+          image: imageUrl,
+        };
+      })
+    );
+    
+    return NextResponse.json({ recipes: recipesWithImages });
   } catch (err: any) {
     console.error('Recipe generation error:', err);
     throw new Error('Failed to generate recipes');
