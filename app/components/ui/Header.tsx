@@ -29,24 +29,6 @@ export function Header({ cartItemCount, totalCost }: HeaderProps) {
             </div>
           </div>
 
-          {/* Cart Info */}
-          <div className="flex items-center gap-6">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm text-gray-500">Total</p>
-              <p className="text-xl font-bold text-gray-900">${totalCost.toFixed(2)}</p>
-            </div>
-            
-            <div className="relative">
-              <button className="w-12 h-12 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center transition-colors">
-                <ShoppingCart className="w-5 h-5 text-gray-700" />
-              </button>
-              {cartItemCount > 0 && (
-                <div className="absolute -top-2 -right-2 w-6 h-6 bg-[#14B8A6] rounded-full flex items-center justify-center">
-                  <span className="text-xs font-bold text-white">{cartItemCount}</span>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
     </header>

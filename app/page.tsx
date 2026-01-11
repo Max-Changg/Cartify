@@ -1290,35 +1290,37 @@ CRITICAL TRIGGER PHRASES (say these EXACTLY):
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-6">
         {/* Removed all notification banners - feedback is now inline and contextual */}
+        <div className="min-h-[calc(100vh-120px)]">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 items-stretch ">
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          {/* Left Column - Voice Agent */}
-          <div className="order-1 lg:order-1">
-            <VoicePanel
-              micState={micState}
-              onMicClick={handleMicClick}
-              conversationMessages={conversationMessages}
-              isConversationActive={isConversationActive || conversationMessages.length > 0}
-            />
-          </div>
+            {/* Left Column - Voice Agent */}
+            <div className="order-1 lg:order-1">
+              <VoicePanel
+                micState={micState}
+                onMicClick={handleMicClick}
+                conversationMessages={conversationMessages}
+                isConversationActive={isConversationActive || conversationMessages.length > 0}
+              />
+            </div>
 
-          {/* Center Column - Recipes */}
-          <div className="order-2 lg:order-2">
-            <RecipePanel recipes={recipes} isGenerating={isGeneratingRecipes} />
-          </div>
+            {/* Center Column - Recipes */}
+            <div className="order-2 lg:order-2 h-full">
+              <RecipePanel recipes={recipes} isGenerating={isGeneratingRecipes} />
+            </div>
 
-          {/* Right Column - Shopping Cart */}
-          <div className="order-3 lg:order-3">
-            <ShoppingCartPanel
-              cartItems={cartItems}
-              totalCost={totalCost}
-              onUpdateQuantity={updateQuantity}
-              onToggleItem={toggleItem}
-              onRemoveItem={removeItem}
-              onExportList={handleExportList}
-              onQuickPurchase={handleQuickPurchase}
-              isProcessing={isProcessing}
-            />
+            {/* Right Column - Shopping Cart */}
+            <div className="order-3 lg:order-3 h-full">
+              <ShoppingCartPanel
+                cartItems={cartItems}
+                totalCost={totalCost}
+                onUpdateQuantity={updateQuantity}
+                onToggleItem={toggleItem}
+                onRemoveItem={removeItem}
+                onExportList={handleExportList}
+                onQuickPurchase={handleQuickPurchase}
+                isProcessing={isProcessing}
+              />
+            </div>
           </div>
         </div>
       </main>
