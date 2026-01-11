@@ -1476,6 +1476,8 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     setMicState('processing');
     
     const audioBuffer = audioQueueRef.current.shift()!;
+    const hasMoreChunks = audioQueueRef.current.length > 0;
+    const isLastChunk = !hasMoreChunks;
     console.log('▶️  Playing buffer:', audioBuffer.duration.toFixed(2), 's (queue:', audioQueueRef.current.length, 'remaining)');
     
     const source = audioContextRef.current!.createBufferSource();

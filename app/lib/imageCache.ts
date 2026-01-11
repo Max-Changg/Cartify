@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const CACHE_DIR = path.join(process.cwd(), 'public', 'images', 'cache');
-const CACHE_MAP_FILE = path.join(process.cwd(), 'app', 'data', 'imageCache.json');
+const CACHE_MAP_FILE = path.join(process.cwd(), 'data', 'imageCache.json');
 
 // Ensure cache directory exists
 if (!fs.existsSync(CACHE_DIR)) {
