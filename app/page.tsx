@@ -860,37 +860,60 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
     URL.revokeObjectURL(url);
   };
 
-  const handleQuickPurchase = () => {
+  const handleQuickPurchase = async () => {
     const enabledItems = cartItems.filter(item => item.enabled);
     if (enabledItems.length === 0) {
       setError('No items selected for purchase');
       return;
     }
 
-    // Create a formatted list for Weee! or copy to clipboard
-    const itemsList = enabledItems.map(item => 
-      `${item.quantity}x ${item.name}`
-    ).join('\n');
+    setIsProcessing(true);
+    setError(null);
 
-    // Copy to clipboard as fallback
-    navigator.clipboard.writeText(itemsList).then(() => {
-      alert('Items copied to clipboard! You can paste them into Weee! or your preferred shopping app.');
-    }).catch(() => {
-      // Fallback: open a new window with the list
-      const newWindow = window.open('', '_blank');
-      if (newWindow) {
-        newWindow.document.write(`
-          <html>
-            <head><title>Shopping List</title></head>
-            <body>
-              <h1>Shopping List</h1>
-              <pre>${itemsList}</pre>
-              <p>Total: $${totalCost.toFixed(2)}</p>
-            </body>
-          </html>
-        `);
+    try {
+      // Extract item names from cart (respecting quantity)
+      const itemNames: string[] = [];
+      enabledItems.forEach(item => {
+        // Add each item according to its quantity
+        for (let i = 0; i < item.quantity; i++) {
+          itemNames.push(item.name);
+        }
+      });
+
+      console.log('🛒 Starting Weee! purchase for items:', itemNames);
+
+      // Call the batch add API endpoint
+      const response = await fetch('/api/cart/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ items: itemNames }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add items to Weee! cart');
       }
-    });
+
+      const result = await response.json();
+      
+      console.log('✅ Weee! cart result:', result);
+
+      // Show success message
+      if (result.summary.successful > 0) {
+        alert(
+          `✅ Successfully added ${result.summary.successful} of ${result.summary.total} items to Weee! cart!\n\n` +
+          `The browser window has opened showing your cart. You can now review and checkout.`
+        );
+      } else {
+        setError('Failed to add any items to Weee! cart. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('❌ Error during Weee! purchase:', err);
+      setError(err.message || 'Failed to process Weee! purchase. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const totalCost = cartItems
