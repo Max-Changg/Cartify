@@ -1,10 +1,14 @@
 // app/lib/recipeEngine.ts
 import OpenAI from "openai"
-import { AMAZON_FRESH_MOCK } from "@/data/amazon_fresh_mock"
+import { AMAZON_FRESH_MOCK } from "../../data/amazon_fresh_mock"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-})
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is not set');
+  }
+  return new OpenAI({ apiKey });
+}
 
 function extractJSON(text: string) {
   // Remove markdown code fences if model includes them
@@ -17,6 +21,7 @@ function extractJSON(text: string) {
 }
 
 export async function generateRecipes(prompt: string) {
+  const openai = getOpenAIClient();
   const response = await openai.chat.completions.create({
     model: "gpt-4.1-mini",
     temperature: 0.4,
