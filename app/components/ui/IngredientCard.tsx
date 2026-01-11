@@ -20,8 +20,8 @@ export function IngredientCard({
     <div 
       className={`bg-white border rounded-xl p-3 hover:shadow-md transition-all duration-200 cursor-pointer ${
         isSelected 
-          ? 'border-[#10B981] bg-[#F0FDF4]' 
-          : 'border-gray-200 hover:border-[#10B981]/30'
+          ? 'border-[#14B8A6] bg-[#F0FDF4]' 
+          : 'border-gray-200 hover:border-[#14B8A6]/30'
       }`}
       onClick={() => onToggle?.(ingredient.id)}
     >
@@ -61,8 +61,8 @@ export function IngredientCard({
               disabled={isAdded}
               className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-all duration-200 flex items-center gap-1 ${
                 isAdded
-                  ? 'bg-[#10B981] text-white animate-bounce-in'
-                  : 'bg-[#10B981] hover:bg-[#059669] hover:shadow-md text-white'
+                  ? 'bg-[#14B8A6] text-white animate-bounce-in'
+                  : 'bg-[#14B8A6] hover:bg-[#10B981] hover:shadow-md text-white'
               }`}
             >
               {isAdded ? (

@@ -40,7 +40,7 @@ export function RecipeModal({ recipe, onClose }: RecipeModalProps) {
           
           {/* Match Badge */}
           <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-sm px-4 py-2 rounded-full flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-[#10B981]" />
+            <TrendingUp className="w-4 h-4 text-[#14B8A6]" />
             <span className="font-semibold text-gray-900">{recipe.matchPercentage}% Match</span>
           </div>
         </div>
@@ -66,7 +66,7 @@ export function RecipeModal({ recipe, onClose }: RecipeModalProps) {
             <ul className="grid grid-cols-2 gap-2">
               {recipe.ingredients.map((ingredient, index) => (
                 <li key={index} className="flex items-center gap-2 text-gray-700">
-                  <span className="w-1.5 h-1.5 bg-[#10B981] rounded-full"></span>
+                  <span className="w-1.5 h-1.5 bg-[#14B8A6] rounded-full"></span>
                   {ingredient}
                 </li>
               ))}
@@ -79,7 +79,7 @@ export function RecipeModal({ recipe, onClose }: RecipeModalProps) {
             <ol className="space-y-3">
               {recipe.steps.map((step, index) => (
                 <li key={index} className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 bg-[#10B981] text-white rounded-full flex items-center justify-center text-sm font-semibold">
+                  <span className="flex-shrink-0 w-6 h-6 bg-[#14B8A6] text-white rounded-full flex items-center justify-center text-sm font-semibold">
                     {index + 1}
                   </span>
                   <span className="text-gray-700 pt-0.5">{step}</span>
@@ -89,7 +89,7 @@ export function RecipeModal({ recipe, onClose }: RecipeModalProps) {
           </div>
 
           {/* Action Button */}
-          <button className="w-full mt-6 bg-[#10B981] hover:bg-[#059669] text-white font-semibold py-3 rounded-xl transition-colors">
+          <button className="w-full mt-6 bg-[#14B8A6] hover:bg-[#10B981] text-white font-semibold py-3 rounded-xl transition-colors">
             Add All Ingredients to Cart
           </button>
         </div>

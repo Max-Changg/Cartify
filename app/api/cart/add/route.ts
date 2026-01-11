@@ -144,10 +144,19 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('❌ Error in cart/add endpoint:', error)
     
+    let errorMessage = 'Unknown error';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      // Check for Playwright browser installation error
+      if (error.message.includes('executablePath') || error.message.includes('browsers are not installed')) {
+        errorMessage = 'Playwright browsers not installed. Please run: npx playwright install chromium';
+      }
+    }
+    
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
       },
       { status: 500 }
     )

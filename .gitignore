@@ -58,3 +58,5 @@ venv/
 # Merge planning docs
 MERGE_PLAN.md
 SETUP.md
+app/data/imageCache.json
+public/images/cache/

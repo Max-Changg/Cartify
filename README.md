@@ -74,6 +74,10 @@ All API routes are located in `app/api/`:
 | GET | `/api/items/[id]` | Get item by ID |
 | PUT | `/api/items/[id]` | Update item by ID |
 | DELETE | `/api/items/[id]` | Delete item by ID |
+| POST | `/api/voice/transcribe` | Transcribe audio to text using Deepgram |
+| POST | `/api/process-request` | Process text and generate shopping lists |
+| POST | `/api/ai-agent` | AI agent conversational flow (recipes, shopping lists) |
+| GET | `/api/recipes` | Get recipe suggestions |
 
 ### Example Request
 
@@ -194,6 +198,41 @@ npm install mongoose
 ✅ **Hot reload** - Fast refresh for both frontend and backend  
 ✅ **Dark mode** - Built-in dark mode support  
 ✅ **Responsive** - Mobile-first design  
+✅ **AI Shopping Assistant** - Deepgram AI agent for conversational recipe and shopping list generation  
+✅ **Voice Input** - Speech-to-text using Deepgram SDK  
+✅ **Recipe Generation** - AI-powered recipe suggestions using Claude (Anthropic)  
+
+## 🤖 AI Shopping Assistant
+
+Cartify includes an intelligent AI agent powered by Deepgram and Claude (Anthropic) that helps users create personalized shopping lists through natural conversation.
+
+### Features:
+- **Health-focused**: Asks about your health goals and dietary preferences
+- **Cuisine preferences**: Generates recipes based on your favorite cuisines
+- **Smart exclusions**: Remembers ingredients you want to avoid
+- **Interactive modification**: Can regenerate recipes or remove specific ingredients on request
+- **Automatic shopping lists**: Consolidates recipe ingredients into organized shopping lists
+
+### Setup:
+1. Add your API keys to `.env.local`:
+```env
+DEEPGRAM_API_KEY=your_deepgram_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+```
+
+2. The AI agent mode is enabled by default. It will:
+   - Ask about your health goals
+   - Ask about cuisine preferences
+   - Generate 4 personalized recipes
+   - Create a consolidated shopping list
+   - Allow you to modify or regenerate as needed
+
+### Usage:
+1. Click "Start" to begin the conversation
+2. Answer the AI's questions about your preferences
+3. Review generated recipes and shopping list
+4. Ask the AI to remove ingredients or regenerate recipes
+5. Export or purchase items from the shopping list  
 
 ## 🛠️ Next Steps
 

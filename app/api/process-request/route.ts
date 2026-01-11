@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SPOONACULAR_API_KEY = process.env.SPOONACULAR_API_KEY;
+const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
 
 interface ShoppingItem {
   id: string;
@@ -198,6 +199,42 @@ Return ONLY the JSON array, nothing else.`;
     const recipesData = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(text);
 
     const recipes: Recipe[] = [];
+    
+    // Fetch images for all recipes in parallel
+    const imagePromises = recipesData.slice(0, number).map(async (recipeData: any, idx: number) => {
+      let recipeImage: string | undefined = undefined;
+      
+      // Fetch image from Unsplash API
+      if (UNSPLASH_ACCESS_KEY && recipeData.title) {
+        try {
+          const query = `${recipeData.title} food recipe`;
+          const unsplashUrl = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape&client_id=${UNSPLASH_ACCESS_KEY}`;
+          const unsplashResponse = await fetch(unsplashUrl);
+          
+          if (unsplashResponse.ok) {
+            const unsplashData = await unsplashResponse.json();
+            if (unsplashData.results && unsplashData.results.length > 0) {
+              recipeImage = unsplashData.results[0].urls.regular || 
+                           unsplashData.results[0].urls.small || 
+                           unsplashData.results[0].urls.thumb;
+            }
+          }
+        } catch (error) {
+          console.log(`Failed to fetch image for ${recipeData.title}:`, error);
+        }
+      }
+      
+      // Fallback to Unsplash Source API if no image found
+      if (!recipeImage && recipeData.title) {
+        recipeImage = `https://source.unsplash.com/800x600/?${encodeURIComponent(recipeData.title + ' food')}`;
+      }
+      
+      return { idx, image: recipeImage };
+    });
+    
+    const imageResults = await Promise.all(imagePromises);
+    const imageMap = new Map(imageResults.map(r => [r.idx, r.image]));
+    
     for (let idx = 0; idx < Math.min(recipesData.length, number); idx++) {
       const recipeData = recipesData[idx];
       const recipeIngredients: RecipeIngredient[] = [];
@@ -227,7 +264,7 @@ Return ONLY the JSON array, nothing else.`;
       recipes.push({
         id: idx + 1000,
         title: recipeData.title || '',
-        image: undefined, // Gemini doesn't provide images directly
+        image: imageMap.get(idx) || undefined, // Use fetched Unsplash image
         readyInMinutes: recipeData.readyInMinutes || 30,
         servings: recipeData.servings || 4,
         sourceUrl: undefined,
