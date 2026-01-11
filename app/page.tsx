@@ -94,6 +94,7 @@ export default function HomePage() {
   const lastAgentMessageRef = useRef<string>('');
   const connectionRef = useRef<any>(null);
   const pendingActionRef = useRef<{ type: string; data: any } | null>(null);
+  const lastInterruptTimeRef = useRef<number>(0);
 
   useEffect(() => {
     // Check backend health
@@ -184,27 +185,6 @@ export default function HomePage() {
     });
   };
 
-  const flushAudioBuffer = async () => {
-    if (audioChunkBufferRef.current.length === 0) return;
-    
-    // Calculate total size of accumulated chunks
-    const totalSize = audioChunkBufferRef.current.reduce((sum, chunk) => sum + chunk.length, 0);
-    console.log('  - Flushing', audioChunkBufferRef.current.length, 'chunks (', totalSize, 'bytes)');
-    
-    // Combine chunks into single buffer
-    const combinedPcm = new Uint8Array(totalSize);
-    let offset = 0;
-    for (const chunk of audioChunkBufferRef.current) {
-      combinedPcm.set(chunk, offset);
-      offset += chunk.length;
-    }
-    
-    // Clear the buffer (we've taken these chunks)
-    audioChunkBufferRef.current = [];
-    
-    // Create WAV file and decode
-    await playAgentAudio(combinedPcm.buffer);
-  };
 
   const triggerAgentFeedback = async (actionType: string) => {
     console.log('📢 Triggering feedback for action:', actionType);
@@ -216,10 +196,13 @@ export default function HomePage() {
         feedbackMessage = 'Done! How does the list look? Would you like me to add or remove anything?';
         break;
       case 'refine_shopping_list':
-        feedbackMessage = 'Done! How does the list look now? Would you like any other changes?';
+        feedbackMessage = 'Done! Would you like any other changes?';
         break;
       case 'regenerate_recipes':
         feedbackMessage = 'Done! How do these recipes look? Would you like any changes?';
+        break;
+      case 'add_recipe_ingredients':
+        feedbackMessage = 'Done! I added the recipe ingredients to your list. Would you like any other changes?';
         break;
     }
     
@@ -273,6 +256,129 @@ export default function HomePage() {
     } catch (err) {
       console.error('❌ Error in triggerAgentFeedback:', err);
     }
+  };
+
+  const addRecipeIngredients = async (userRequest: string) => {
+    if (isGeneratingRecipes) {
+      console.log('⚠️ Already generating, skipping recipe ingredients addition');
+      return;
+    }
+    
+    setIsGeneratingRecipes(true);
+    console.log('🍳 Adding recipe ingredients based on:', userRequest);
+    console.log('🍳 Current shopping list:', currentShoppingListRef.current);
+    console.log('🍳 Current recipes:', currentRecipesRef.current);
+
+    try {
+      // Extract recipe title from user request using simple keyword matching
+      // We'll send the full request and let Gemini figure it out on the backend
+      const recipeTitle = extractRecipeTitle(userRequest);
+      console.log('🍳 Extracted recipe title:', recipeTitle);
+
+      // Call the add_recipe_ingredients action
+      const response = await fetch('/api/ai-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_recipe_ingredients',
+          userRequest: userRequest,
+          recipeTitle: recipeTitle,
+          currentShoppingList: currentShoppingListRef.current,
+          currentRecipes: currentRecipesRef.current,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ API error:', errorData);
+        throw new Error(errorData.detail || 'Failed to add recipe ingredients');
+      }
+
+      const { shopping_list } = await response.json();
+      console.log('✅ Updated shopping list with recipe ingredients:', shopping_list);
+
+      // Convert to CartItem format and merge with existing items
+      const newCartItems: CartItem[] = [];
+      const processedItems = new Set<string>();
+      
+      // Process items from the API response
+      (Array.isArray(shopping_list) ? shopping_list : []).forEach((item: any) => {
+        const itemName = (item.item || item.name || 'Unknown Item').toLowerCase().trim();
+        
+        // Parse price
+        let price = 0;
+        if (item.estimatedPrice !== undefined && item.estimatedPrice !== null) {
+          price = typeof item.estimatedPrice === 'number' ? item.estimatedPrice : parseFloat(item.estimatedPrice) || 0;
+        } else if (item.price !== undefined && item.price !== null) {
+          price = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0;
+        }
+        
+        // Parse quantity
+        let quantity = 1;
+        if (item.quantity !== undefined && item.quantity !== null) {
+          quantity = typeof item.quantity === 'number' ? item.quantity : parseInt(item.quantity) || 1;
+        }
+        
+        // Check if this item already exists
+        const existingItem = currentShoppingListRef.current.find(
+          cartItem => cartItem.name.toLowerCase().trim() === itemName
+        );
+        
+        if (existingItem) {
+          // Keep existing item
+          newCartItems.push(existingItem);
+        } else {
+          // Create new item
+          newCartItems.push({
+            id: `cart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: item.item || item.name || 'Unknown Item',
+            quantity: quantity,
+            price: price,
+            enabled: true,
+            brand: item.brand,
+          });
+          console.log(`✅ Added new ingredient "${item.item || item.name}"`);
+        }
+        
+        processedItems.add(itemName);
+      });
+
+      if (newCartItems.length > 0) {
+        setCartItems(newCartItems);
+        currentShoppingListRef.current = newCartItems;
+        console.log('✅ Shopping cart updated with', newCartItems.length, 'items');
+        
+        // Log pricing summary
+        const totalPrice = newCartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        console.log('💰 Total estimated cost:', `$${totalPrice.toFixed(2)}`);
+      }
+
+      setIsGeneratingRecipes(false);
+    } catch (error: any) {
+      console.error('❌ Error adding recipe ingredients:', error);
+      setError('Failed to add recipe ingredients: ' + error.message);
+      setIsGeneratingRecipes(false);
+    }
+  };
+
+  // Helper function to extract recipe title from user request
+  const extractRecipeTitle = (userRequest: string): string => {
+    // Look for common patterns like "the X recipe", "recipe titled X", "X dish", etc.
+    const patterns = [
+      /(?:recipe titled |titled |recipe called |called |recipe named |named )["']?([^"']+)["']?/i,
+      /(?:the |that )([^,]+?)(?:recipe|dish)/i,
+      /(?:from |for )(?:the )?([^,]+?)(?:recipe|dish)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = userRequest.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+
+    // Fallback: return the full request and let backend figure it out
+    return userRequest;
   };
 
   const refineShoppingList = async (userRequest: string) => {
@@ -790,11 +896,14 @@ FEEDBACK LOOP:
 - Ask: "How does the shopping list look? Would you like me to add or remove anything?"
 - Listen for their response:
   - If they want changes → acknowledge and say the appropriate trigger phrase, then STOP
-  - If they say "everything looks good" / "looks great" / "that's perfect" → say EXACTLY: "Great! When you're ready, click the purchase button and I'll fill in your cart for you."
+  - If they say "no" / "nope" / "I'm good" / "everything looks good" / "looks great" / "that's perfect" → say EXACTLY: "Great! When you're ready, click the purchase button and I'll fill in your cart for you." Then STOP asking questions.
+
+IMPORTANT: When user says "no", they're done. Move to purchase prompt immediately.
 
 REFINEMENT TRIGGERS (STOP AFTER THESE):
 - If user wants to modify shopping list → say EXACTLY: "Let me update your shopping list." then STOP (system will provide feedback)
 - If user wants different recipes → say EXACTLY: "Let me find different recipes for you." then STOP (system will provide feedback)
+- If user wants ingredients from a specific recipe → say EXACTLY: "Let me add those recipe ingredients to your list." then STOP (system will provide feedback)
 
 IMPORTANT: After trigger phrases, DO NOT ask follow-up questions. The system handles that.
 
@@ -803,6 +912,7 @@ Keep responses short (1-2 sentences). Be warm and conversational.
 CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
 - "Let me update your shopping list." = Modify shopping list → STOP
 - "Let me find different recipes for you." = Regenerate recipes → STOP
+- "Let me add those recipe ingredients to your list." = Add recipe ingredients → STOP
 - "Great! When you're ready, click the purchase button and I'll fill in your cart for you." = User is done`;
         } else {
           // Fresh start or resume without context
@@ -819,14 +929,21 @@ FEEDBACK LOOP (after generation or modification):
 4. ALWAYS ask for feedback after the list updates: "How does the shopping list look? Would you like me to add or remove anything?"
 5. Listen for their response:
    - If they want changes → acknowledge and say the appropriate trigger phrase (see below), then STOP and wait for system to respond
-   - If they say "everything looks good" / "looks great" / "that's perfect" / "I'm happy with it" → say EXACTLY: "Great! When you're ready, click the purchase button and I'll fill in your cart for you."
-   - If unclear → ask a clarifying question
+   - If they say "no" / "nope" / "I'm good" / "everything looks good" / "looks great" / "that's perfect" / "I'm happy with it" / "no changes" → say EXACTLY: "Great! When you're ready, click the purchase button and I'll fill in your cart for you." Then STOP asking questions.
+   - If unclear → ask ONE clarifying question
+
+IMPORTANT: When user says "no" or indicates they're done, DO NOT continue asking more questions. Move directly to the purchase prompt.
 
 REFINEMENT TRIGGERS (CRITICAL - STOP AFTER THESE):
 - If user wants to modify shopping list → say EXACTLY: "Let me update your shopping list." then STOP TALKING (the system will handle the rest)
 - If user wants different recipes → say EXACTLY: "Let me find different recipes for you." then STOP TALKING (the system will handle the rest)
+- If user wants ingredients from a specific recipe → say EXACTLY: "Let me add those recipe ingredients to your list." then STOP TALKING (the system will handle the rest)
 
 IMPORTANT: After saying a trigger phrase, DO NOT continue with questions like "How does it look?" or "Any changes?". The system will provide that feedback automatically.
+
+RECIPE INGREDIENTS REQUEST:
+- User will mention a specific recipe (e.g., "I like the green bean casserole recipe", "add ingredients from the tofu dish")
+- You should say the trigger phrase and let the system find and add the ingredients
 
 FINAL CONFIRMATION:
 - Only when user explicitly indicates they're happy with the list (e.g., "looks good", "perfect", "I'm done"), say the purchase button message
@@ -838,6 +955,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
 - "Perfect! Let me generate some recipes for you." = Initial generation → STOP
 - "Let me update your shopping list." = Modify shopping list → STOP
 - "Let me find different recipes for you." = Regenerate recipes → STOP
+- "Let me add those recipe ingredients to your list." = Add specific recipe ingredients → STOP
 - "Great! When you're ready, click the purchase button and I'll fill in your cart for you." = User is done, ready for checkout`;
         }
         
@@ -891,7 +1009,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
             audio: {
               sampleRate: 16000,
               channelCount: 1,
-              echoCancellation: true,  // Per docs: helps prevent agent from hearing itself
+              echoCancellation: true,
               noiseSuppression: true,
               autoGainControl: true,
             }
@@ -958,7 +1076,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
         console.log('  - Audio output:', data?.audio?.output);
       });
 
-      // Handle audio from agent - streaming approach for low latency
+      // Handle audio from agent - streaming approach with larger buffers
       connection.on(AgentEvents.Audio, (data: any) => {
         // Don't process audio if paused
         if (isPausedRef.current) return;
@@ -979,20 +1097,19 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
           return;
         }
         
-        // Accumulate chunks
+        // Accumulate chunks into larger buffers
         audioChunkBufferRef.current.push(chunkData);
         console.log('  - Accumulated chunks:', audioChunkBufferRef.current.length);
         
-        // Start playing after accumulating 15 chunks (~1 second of audio)
-        // Larger buffer = ultra-smooth playback
-        if (audioChunkBufferRef.current.length === 25) {
-          console.log('🎵 Initial buffer filled (25 chunks), flushing to playback...');
+        // Start playing after accumulating MORE chunks for smoother playback
+        if (audioChunkBufferRef.current.length === 60) {
+          console.log('🎵 Initial buffer filled (30 chunks), flushing to playback...');
           flushAudioBuffer();
         }
         
-        // Continue flushing every 30 chunks for smooth, continuous segments
-        if (audioChunkBufferRef.current.length % 30 === 0 && audioChunkBufferRef.current.length > 15) {
-          console.log('🎵 Periodic flush (30 chunks accumulated)');
+        // Continue flushing every 40 chunks for larger, smoother segments
+        if (audioChunkBufferRef.current.length % 50 === 0 && audioChunkBufferRef.current.length > 20) {
+          console.log('🎵 Periodic flush (40 chunks accumulated)');
           flushAudioBuffer();
         }
       });
@@ -1081,15 +1198,41 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
               console.error('❌ No user request found for regeneration');
             }
           }
+          // Recipe ingredients addition trigger - queue the action
+          else if (contentLower.includes('let me add those recipe ingredients')) {
+            console.log('🎯 Recipe ingredients addition trigger detected! Queuing action...');
+            const userRequest = lastUserRequestRef.current;
+            console.log('🎯 User request to queue:', userRequest);
+            
+            if (userRequest) {
+              pendingActionRef.current = {
+                type: 'add_recipe_ingredients',
+                data: userRequest
+              };
+            } else {
+              console.error('❌ No user request found for recipe ingredients');
+            }
+          }
         }
       });
 
       // Handle user started speaking - clear all audio
       connection.on(AgentEvents.UserStartedSpeaking, () => {
-        console.log('🎤 User started speaking - interrupting agent');
-        
         // Don't process if paused
         if (isPausedRef.current) return;
+        
+        // Debounce interruptions to prevent small noises from triggering
+        const now = Date.now();
+        const timeSinceLastInterrupt = now - lastInterruptTimeRef.current;
+        
+        // Require at least 300ms between interrupts to filter out quick noise spikes
+        if (timeSinceLastInterrupt < 300) {
+          console.log('⚠️ Ignoring interrupt (too soon after last one)');
+          return;
+        }
+        
+        lastInterruptTimeRef.current = now;
+        console.log('🎤 User started speaking - interrupting agent');
         
         // Clear ALL audio buffers immediately
         audioChunkBufferRef.current = [];
@@ -1118,6 +1261,9 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       connection.on(AgentEvents.AgentAudioDone, async () => {
         console.log('✅ Agent finished speaking');
         isAgentSpeakingRef.current = false;
+        
+        // Small delay to ensure all audio data has arrived
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Flush any remaining buffered chunks
         if (audioChunkBufferRef.current.length > 0) {
@@ -1150,6 +1296,10 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
                 break;
               case 'regenerate_recipes':
                 await regenerateRecipes(action.data);
+                shouldProvideFeedback = true;
+                break;
+              case 'add_recipe_ingredients':
+                await addRecipeIngredients(action.data);
                 shouldProvideFeedback = true;
                 break;
             }
@@ -1201,6 +1351,28 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       setMicState('idle');
       console.error('Error starting agent:', err);
     }
+  };
+
+  const flushAudioBuffer = async () => {
+    if (audioChunkBufferRef.current.length === 0) return;
+    
+    // Calculate total size of accumulated chunks
+    const totalSize = audioChunkBufferRef.current.reduce((sum, chunk) => sum + chunk.length, 0);
+    console.log('  - Flushing', audioChunkBufferRef.current.length, 'chunks (', totalSize, 'bytes)');
+    
+    // Combine chunks into single buffer
+    const combinedPcm = new Uint8Array(totalSize);
+    let offset = 0;
+    for (const chunk of audioChunkBufferRef.current) {
+      combinedPcm.set(chunk, offset);
+      offset += chunk.length;
+    }
+    
+    // Clear the buffer (we've taken these chunks)
+    audioChunkBufferRef.current = [];
+    
+    // Create WAV file and decode
+    await playAgentAudio(combinedPcm.buffer);
   };
 
   const playAgentAudio = async (audioData: ArrayBuffer | Uint8Array | unknown) => {
@@ -1285,8 +1457,11 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       
       // Only return to listening if agent is done speaking
       if (!isAgentSpeakingRef.current) {
-        setMicState('listening');
-        setIsConversationActive(true); // Keep conversation active
+        // Add delay before returning to listening to ensure audio is fully complete
+        setTimeout(() => {
+          setMicState('listening');
+          setIsConversationActive(true);
+        }, 400);
       }
       return;
     }
@@ -1309,26 +1484,23 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     gainNode.connect(audioContextRef.current!.destination);
     
     const now = audioContextRef.current!.currentTime;
-    const fadeTime = 0.005; // 5ms fade - minimal but prevents clicks
+    const fadeTime = 0.1;
     
-    // Only fade in if not the first chunk (prevents cutting beginning)
-    // For first chunk, start at full volume
-    if (isPlayingRef.current) {
-      gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
-    } else {
-      gainNode.gain.setValueAtTime(1, now);
-    }
+    // Subtle fade in at the very start to prevent pops
+    gainNode.gain.setValueAtTime(0.98, now);
+    gainNode.gain.linearRampToValueAtTime(1, now + fadeTime);
     
-    // Only fade out if there are more chunks coming (NOT on last chunk!)
-    // This prevents cutting off the end of speech
+    // For last chunk: NO fade out at all - play at full volume until the very end
+    // For other chunks: minimal fade out to blend with next chunk
     if (!isLastChunk && hasMoreChunks) {
       const endTime = now + audioBuffer.duration;
+      // Very gentle fade at the very end for smooth transitions
       gainNode.gain.setValueAtTime(1, endTime - fadeTime);
-      gainNode.gain.linearRampToValueAtTime(0.8, endTime); // Gentle fade to 80%, not silence
+      gainNode.gain.linearRampToValueAtTime(0.98, endTime);
     } else {
-      // Last chunk: maintain full volume to the end
+      // Last chunk: maintain full volume throughout
       gainNode.gain.setValueAtTime(1, now);
+      gainNode.gain.setValueAtTime(1, now + audioBuffer.duration);
     }
     
     source.onended = () => {
@@ -1338,6 +1510,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     
     source.start();
   };
+
 
   const pauseConversation = () => {
     console.log('Pausing conversation...');
