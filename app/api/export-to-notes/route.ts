@@ -36,48 +36,36 @@ export async function POST(request: NextRequest) {
       // Escape the file path for AppleScript
       const escapedPath = tempFile.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       
-      // AppleScript to read file and create note with preserved formatting
-      // Use read fileRef which preserves formatting correctly
+      // Simplified AppleScript - much faster execution
+      // Read file content and create note in one operation
       const appleScript = `set filePath to POSIX file "${escapedPath}"
 set fileRef to open for access filePath
 set fileContent to read fileRef
 close access fileRef
 
--- Split by newline to get individual lines (preserves empty lines)
-set AppleScript's text item delimiters to "\n"
-set contentLines to text items of fileContent
-set AppleScript's text item delimiters to ""
-
 tell application "Notes"
-  activate
   try
     tell account "iCloud"
-      -- Create empty note first
-      set newNote to make new note at folder "Notes" with properties {name:"${escapedTitle}", body:""}
-      
-      -- Append each line with explicit return to preserve formatting
-      repeat with aLine in contentLines
-        set body of newNote to (body of newNote) & aLine & return
-      end repeat
+      make new note at folder "Notes" with properties {name:"${escapedTitle}", body:fileContent}
     end tell
   on error
     -- Fallback to default account
-    set newNote to make new note with properties {name:"${escapedTitle}", body:""}
-    
-    -- Append each line with explicit return to preserve formatting
-    repeat with aLine in contentLines
-      set body of newNote to (body of newNote) & aLine & return
-    end repeat
+    make new note with properties {name:"${escapedTitle}", body:fileContent}
   end try
-end tell`;
+end tell
+
+return "success"`;
 
       // Write AppleScript to temp file and execute it
       const scriptFile = join(tmpdir(), `cartify-script-${Date.now()}.scpt`);
       try {
         writeFileSync(scriptFile, appleScript, { encoding: 'utf8' });
         
-        // Run the AppleScript from file
-        await execAsync(`osascript "${scriptFile}"`);
+        // Run the AppleScript from file with timeout
+        const startTime = Date.now();
+        await execAsync(`osascript "${scriptFile}"`, { timeout: 8000 }); // 8 second timeout
+        const duration = Date.now() - startTime;
+        console.log(`✅ Notes export completed in ${duration}ms`);
         
         // Clean up script file
         try { unlinkSync(scriptFile); } catch {}
@@ -87,15 +75,28 @@ end tell`;
         
         return NextResponse.json({
           success: true,
-          message: 'Note created successfully in Notes app'
+          message: 'Note created successfully in Notes app',
+          duration
         });
       } catch (error: any) {
         // Clean up temp files on error
         try { unlinkSync(tempFile); } catch {}
         try { unlinkSync(scriptFile); } catch {}
-        console.error('AppleScript error:', error);
-        console.error('AppleScript stderr:', error.stderr);
-        console.error('AppleScript stdout:', error.stdout);
+        
+        if (error.killed || error.signal === 'SIGTERM') {
+          console.error('❌ AppleScript timed out');
+          return NextResponse.json(
+            { 
+              error: 'Notes export timed out',
+              details: 'The Notes app took too long to respond'
+            },
+            { status: 504 }
+          );
+        }
+        
+        console.error('❌ AppleScript error:', error);
+        console.error('Stderr:', error.stderr);
+        console.error('Stdout:', error.stdout);
         return NextResponse.json(
           { 
             error: 'Failed to create note in Notes app',

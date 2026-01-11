@@ -1769,8 +1769,12 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     }
 
     // Try to export to Notes app
+    setIsProcessing(true);
     try {
-      setIsProcessing(true);
+      // Add timeout to prevent long hangs
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
       const response = await fetch('/api/export-to-notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1778,7 +1782,10 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
           content: exportContent,
           title: 'Cartify Shopping List'
         }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       const result = await response.json();
 
@@ -1786,6 +1793,7 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
         // Success - note created in Notes app
         setError(null);
         console.log('✅ Shopping list exported to Notes app');
+        alert('✅ Shopping list exported to Notes app successfully!');
         return; // Don't download file
       } else {
         // Log the error for debugging
@@ -1794,16 +1802,21 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       }
     } catch (error: any) {
       // Fallback to file download if Notes app is not available or on non-macOS
-      console.log('📝 Falling back to file download:', error);
-    const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'cartify_shopping_list.txt';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      if (error.name === 'AbortError') {
+        console.log('⏱️ Notes export timed out, falling back to file download');
+      } else {
+        console.log('📝 Falling back to file download:', error.message || error);
+      }
+      
+      const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'cartify_shopping_list.txt';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     } finally {
       setIsProcessing(false);
     }
