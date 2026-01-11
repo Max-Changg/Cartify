@@ -11,6 +11,7 @@ interface ShoppingCartPanelProps {
   onRemoveItem: (id: string) => void;
   onExportList: () => void;
   onQuickPurchase: () => void;
+  onFindStores: () => void;
   isProcessing?: boolean;
 }
 
@@ -22,6 +23,7 @@ export function ShoppingCartPanel({
   onRemoveItem,
   onExportList,
   onQuickPurchase,
+  onFindStores,
   isProcessing = false,
 }: ShoppingCartPanelProps) {
   const [displayTotal, setDisplayTotal] = useState(0);
@@ -153,7 +155,11 @@ export function ShoppingCartPanel({
           <Download className="w-4 h-4" />
           Export List
         </button>
-        <button className="w-full text-[#14B8A6] hover:text-[#10B981] font-medium py-2 flex items-center justify-center gap-2 transition-all duration-300 hover:bg-[#14B8A6]/10 rounded-xl">
+        <button 
+          onClick={onFindStores}
+          disabled={isProcessing}
+          className="w-full text-[#14B8A6] hover:text-[#10B981] disabled:text-gray-400 disabled:cursor-not-allowed font-medium py-2 flex items-center justify-center gap-2 transition-all duration-300 hover:bg-[#14B8A6]/10 rounded-xl"
+        >
           <MapPin className="w-4 h-4" />
           Find Nearby Stores
         </button>
