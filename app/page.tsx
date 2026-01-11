@@ -786,12 +786,12 @@ export default function HomePage() {
         }
         
         return {
-          id: `cart-${Date.now()}-${index}`,
-          name: item.item || item.name || 'Unknown Item',
+        id: `cart-${Date.now()}-${index}`,
+        name: item.item || item.name || 'Unknown Item',
           quantity: quantity,
           price: price,
-          enabled: true,
-          brand: item.brand,
+        enabled: true,
+        brand: item.brand,
         };
       });
 
@@ -839,7 +839,11 @@ export default function HomePage() {
 
       if (!connectResponse.ok) {
         const errorData = await connectResponse.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Failed to get agent connection info');
+        const errorMessage = errorData.detail || 'Failed to get agent connection info';
+        console.error('❌ Failed to connect to agent:', errorMessage);
+        setError(`Microphone setup failed: ${errorMessage}. Please check that DEEPGRAM_API_KEY is configured in Vercel environment variables.`);
+        setMicState('idle');
+        throw new Error(errorMessage);
       }
 
       const { deepgramKey } = await connectResponse.json();
@@ -1032,6 +1036,9 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
           processor.connect(micAudioContext.destination);
 
           processor.onaudioprocess = (event) => {
+            // Don't send audio data if muted/paused
+            if (isPausedRef.current) return;
+            
             const inputData = event.inputBuffer.getChannelData(0);
             
             // Convert Float32 to Int16 (PCM16)
@@ -1246,7 +1253,10 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
         isAgentSpeakingRef.current = false;
         isPlayingRef.current = false;
         
-        setMicState('listening');
+        // Only change mic state if user hasn't manually muted
+        if (!isPausedRef.current) {
+          setMicState('listening');
+        }
         setIsConversationActive(true); // Conversation is now active
       });
 
@@ -1254,13 +1264,14 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       connection.on(AgentEvents.AgentStartedSpeaking, () => {
         console.log('🗣️ Agent started speaking - preparing to accumulate audio');
         
-        // Don't process if paused
-        if (isPausedRef.current) return;
-        
-        setMicState('processing');
         isAgentSpeakingRef.current = true;
         // Clear previous audio buffer
         audioChunkBufferRef.current = [];
+        
+        // Only change mic state if user hasn't manually muted
+        if (!isPausedRef.current) {
+          setMicState('processing');
+        }
       });
 
       // Handle agent audio done - Flush any remaining chunks
@@ -1328,13 +1339,19 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       connection.on(AgentEvents.Error, (err: any) => {
         // console.error('❌ Agent error:', err);
         // setError(err.message || 'Agent error occurred');
-        setMicState('idle');
+        // Only change to idle if not manually muted
+        if (!isPausedRef.current) {
+          setMicState('idle');
+        }
       });
 
       // Handle connection close
       connection.on(AgentEvents.Close, () => {
         console.log('🔌 Connection closed');
-        setMicState('idle');
+        // Only change to idle if not manually muted
+        if (!isPausedRef.current) {
+          setMicState('idle');
+        }
       });
 
       // Handle unhandled events
@@ -1460,8 +1477,8 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       console.log('✅ Playback queue empty');
       isPlayingRef.current = false;
       
-      // Only return to listening if agent is done speaking
-      if (!isAgentSpeakingRef.current) {
+      // Only return to listening if agent is done speaking AND user hasn't manually muted
+      if (!isAgentSpeakingRef.current && !isPausedRef.current) {
         // Add delay before returning to listening to ensure audio is fully complete
         setTimeout(() => {
           setMicState('listening');
@@ -1472,7 +1489,11 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     }
 
     isPlayingRef.current = true;
-    setMicState('processing');
+    
+    // Only change mic state if user hasn't manually muted
+    if (!isPausedRef.current) {
+      setMicState('processing');
+    }
     
     const audioBuffer = audioQueueRef.current.shift()!;
     const hasMoreChunks = audioQueueRef.current.length > 0;
@@ -1498,9 +1519,9 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     // For last chunk: NO fade out at all - play at full volume until the very end
     // For other chunks: minimal fade out to blend with next chunk
     if (!isLastChunk && hasMoreChunks) {
-      const endTime = now + audioBuffer.duration;
+    const endTime = now + audioBuffer.duration;
       // Very gentle fade at the very end for smooth transitions
-      gainNode.gain.setValueAtTime(1, endTime - fadeTime);
+    gainNode.gain.setValueAtTime(1, endTime - fadeTime);
       gainNode.gain.linearRampToValueAtTime(0.98, endTime);
     } else {
       // Last chunk: maintain full volume throughout
@@ -1518,39 +1539,15 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
 
 
   const pauseConversation = () => {
-    console.log('Pausing conversation...');
+    console.log('Muting microphone...');
     
-    // Stop AI audio playback immediately
-    if (audioContextRef.current && isPlayingRef.current) {
-      // Stop all audio sources
-      audioQueueRef.current = [];
-      isPlayingRef.current = false;
-    }
+    // ONLY mute the microphone - don't stop AI audio or clear buffers
+    // The AI can still speak and be heard, but won't hear the user
     
-    // Clear audio buffers to stop any pending audio
-    audioChunkBufferRef.current = [];
-    audioQueueRef.current = [];
-    isAgentSpeakingRef.current = false;
-    
-    // Stop microphone input (but keep connection open for resume)
-    if (mediaRecorderRef.current) {
-      try {
-        if (typeof mediaRecorderRef.current.stop === 'function') {
-          mediaRecorderRef.current.stop();
-        }
-        if (mediaRecorderRef.current.stream) {
-          mediaRecorderRef.current.stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
-        }
-      } catch (err) {
-        console.error('Error stopping recorder:', err);
-      }
-      // Don't set to null - we'll reuse it on resume
-    }
-
     setMicState('paused');
     setIsPaused(true);
     isPausedRef.current = true;
-    console.log('Conversation paused - messages remain visible');
+    console.log('Microphone muted - AI can still speak but won\'t hear you');
   };
 
   const stopRecording = () => {
@@ -1612,14 +1609,13 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
       setIsConversationActive(true);
       setIsPaused(false);
     } else if (micState === 'paused') {
-      // Resume conversation from where we left off
-      console.log('Resuming conversation...');
+      // Unmute - just resume audio input, don't restart connection
+      console.log('Unmuting microphone...');
       setIsPaused(false);
       isPausedRef.current = false;
-      // Resume with context
-      startRecording(true);
+      setMicState('listening'); // Return to listening state
     } else {
-      // Pause conversation (keep messages visible)
+      // Mute - pause audio input only
       pauseConversation();
     }
   };
@@ -1799,15 +1795,15 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
     } catch (error: any) {
       // Fallback to file download if Notes app is not available or on non-macOS
       console.log('📝 Falling back to file download:', error);
-      const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'cartify_shopping_list.txt';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    const blob = new Blob([exportContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'cartify_shopping_list.txt';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     } finally {
       setIsProcessing(false);
     }
@@ -1905,34 +1901,34 @@ CRITICAL TRIGGER PHRASES (say ONLY these, then STOP):
         <div className="min-h-[calc(100vh-120px)]">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 ">
 
-            {/* Left Column - Voice Agent */}
-            <div className="order-1 lg:order-1">
-              <VoicePanel
-                micState={micState}
-                onMicClick={handleMicClick}
-                conversationMessages={conversationMessages}
-                isConversationActive={isConversationActive || conversationMessages.length > 0}
-              />
-            </div>
+          {/* Left Column - Voice Agent */}
+          <div className="order-1 lg:order-1">
+            <VoicePanel
+              micState={micState}
+              onMicClick={handleMicClick}
+              conversationMessages={conversationMessages}
+              isConversationActive={isConversationActive || conversationMessages.length > 0}
+            />
+          </div>
 
-            {/* Center Column - Recipes */}
-            <div className="order-2 lg:order-2">
-              <RecipePanel recipes={recipes} isGenerating={isGeneratingRecipes} />
-            </div>
+          {/* Center Column - Recipes */}
+          <div className="order-2 lg:order-2">
+            <RecipePanel recipes={recipes} isGenerating={isGeneratingRecipes} />
+          </div>
 
-            {/* Right Column - Shopping Cart */}
-            <div className="order-3 lg:order-3">
-              <ShoppingCartPanel
-                cartItems={cartItems}
-                totalCost={totalCost}
-                onUpdateQuantity={updateQuantity}
-                onToggleItem={toggleItem}
-                onRemoveItem={removeItem}
-                onExportList={handleExportList}
-                onQuickPurchase={handleQuickPurchase}
+          {/* Right Column - Shopping Cart */}
+          <div className="order-3 lg:order-3">
+            <ShoppingCartPanel
+              cartItems={cartItems}
+              totalCost={totalCost}
+              onUpdateQuantity={updateQuantity}
+              onToggleItem={toggleItem}
+              onRemoveItem={removeItem}
+              onExportList={handleExportList}
+              onQuickPurchase={handleQuickPurchase}
                 onFindStores={handleFindStores}
-                isProcessing={isProcessing}
-              />
+              isProcessing={isProcessing}
+            />
             </div>
           </div>
         </div>

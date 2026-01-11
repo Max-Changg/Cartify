@@ -25,9 +25,11 @@ export function RecipeCard({ recipe, onClick, index = 0 }: RecipeCardProps) {
     <div
       className={`group relative bg-white rounded-xl overflow-hidden cursor-pointer transition-all duration-300 border border-gray-200 ${
         isVisible ? 'opacity-100' : 'opacity-0'
-      }`}
+      } ${isHovered ? 'z-50' : 'z-10'}`}
       style={{
-        transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+        transform: isVisible 
+          ? (isHovered ? 'translateY(-8px)' : 'translateY(0)')
+          : 'translateY(20px)',
         transition: 'all 0.5s cubic-bezier(0.4, 0.0, 0.2, 1)',
       }}
       onClick={onClick}

@@ -104,18 +104,27 @@ async function generateRecipes(healthGoals: string, cuisinePreferences: string, 
     ? ` Exclude these ingredients: ${excludedItems.join(', ')}.` 
     : '';
   
-  const prompt = `Generate 4 diverse recipes based on these preferences:
-- Health goals: ${healthGoals}
-- Cuisine preferences: ${cuisinePreferences}
+  const prompt = `Generate 4 diverse recipes based on these preferences.
+
+CRITICAL REQUIREMENT - CUISINE TYPE:
+The user specifically wants: ${cuisinePreferences}
+ALL recipes MUST match this cuisine type. This is NON-NEGOTIABLE.
+
+Health considerations (apply within the cuisine type):
+${healthGoals}
 ${excludedText}
 
-IMPORTANT: Include a mix of meal types (breakfast, lunch, dinner, dessert) when possible.
+IMPORTANT: 
+- Include a mix of meal types (breakfast, lunch, dinner, dessert) when possible
+- Every recipe MUST be authentic ${cuisinePreferences} cuisine
+- Do not mix cuisines or deviate from the requested type
+- Balance health goals with authentic ${cuisinePreferences} flavors
 
 Return ONLY a JSON array with this exact structure, no other text:
 [
   {
     "name": "Recipe Name",
-    "cuisine": "Cuisine Type",
+    "cuisine": "${cuisinePreferences}",
     "mealType": "breakfast/lunch/dinner/dessert",
     "servings": 4,
     "prepTime": "30 mins",
@@ -475,18 +484,23 @@ async function regenerateRecipes(
   
   const prompt = `The user currently has these recipes: ${currentRecipeNames}
 
-User's health goals: ${healthGoals}
-User's cuisine preferences: ${cuisinePreferences}
-${excludedText}
-
 The user said: "${userRequest}"
 
+CRITICAL - CUISINE REQUIREMENT:
+User's preferred cuisine: ${cuisinePreferences}
+ALL new recipes MUST match this cuisine type unless user explicitly requested different cuisine.
+
+Health considerations (apply within the cuisine type):
+${healthGoals}
+${excludedText}
+
 Based on this feedback, generate 4 NEW different recipes that better match what they're looking for. You should:
-- If they want different cuisines, change the cuisine style
+- If they want different cuisines, change the cuisine style as requested
 - If they don't like the current recipes, go in a completely different direction
 - If they want more of a certain meal type, prioritize that (e.g., more breakfast options)
 - If they mention specific foods or restrictions, incorporate those
 - AVOID repeating the recipes they already have
+- Stay authentic to the ${cuisinePreferences} cuisine style unless explicitly asked to change
 
 IMPORTANT: Include a mix of meal types (breakfast, lunch, dinner, dessert) when possible.
 
@@ -494,7 +508,7 @@ Return ONLY a JSON array with this exact structure, no other text:
 [
   {
     "name": "Recipe Name",
-    "cuisine": "Cuisine Type",
+    "cuisine": "Cuisine Type (should be ${cuisinePreferences} unless user requested different)",
     "mealType": "breakfast/lunch/dinner/dessert",
     "servings": 4,
     "prepTime": "30 mins",

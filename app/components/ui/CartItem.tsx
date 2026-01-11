@@ -49,8 +49,11 @@ export function CartItem({ item, onUpdateQuantity, onToggle, onRemove, index = 0
           : 'bg-gray-50 border-gray-100 opacity-50 blur-[0.5px]'
       }`}
       style={{
+        animationName: 'slide-in-left',
+        animationDuration: '0.4s',
+        animationTimingFunction: 'cubic-bezier(0.4, 0.0, 0.2, 1)',
+        animationFillMode: 'forwards',
         animationDelay: `${index * 0.1}s`,
-        animation: 'slide-in-left 0.4s cubic-bezier(0.4, 0.0, 0.2, 1) forwards',
         opacity: 0,
       }}
     >

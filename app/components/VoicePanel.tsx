@@ -201,7 +201,7 @@ export function VoicePanel({
         <div className="mt-4 h-5 flex items-center justify-center">
           <p className="text-white/90 text-sm font-medium">
             {isIdle && 'Press to talk'}
-            {isPaused && 'Paused - Click to resume'}
+            {isPaused && 'Microphone muted - Click to unmute'}
             {isUserSpeaking && 'Recording...'}
             {isAISpeaking && 'AI Speaking...'}
             {isConversationActive && !isPaused && !isUserSpeaking && !isAISpeaking && micState !== 'idle' && 'Listening...'}
@@ -212,12 +212,12 @@ export function VoicePanel({
         <div className="h-4 mt-1 flex items-center justify-center">
           {isConversationActive && !isPaused && (
             <p className="text-white/60 text-xs">
-              Click mic to pause
+              Click mic to mute
             </p>
           )}
           {isPaused && (
             <p className="text-white/60 text-xs">
-              Click mic to resume
+              Click mic to unmute
             </p>
           )}
         </div>
