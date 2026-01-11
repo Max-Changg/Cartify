@@ -198,28 +198,6 @@ export default function HomePage() {
     await playAgentAudio(combinedPcm.buffer);
   };
 
-  const flushAudioBuffer = async () => {
-    if (audioChunkBufferRef.current.length === 0) return;
-    
-    // Calculate total size of accumulated chunks
-    const totalSize = audioChunkBufferRef.current.reduce((sum, chunk) => sum + chunk.length, 0);
-    console.log('  - Flushing', audioChunkBufferRef.current.length, 'chunks (', totalSize, 'bytes)');
-    
-    // Combine chunks into single buffer
-    const combinedPcm = new Uint8Array(totalSize);
-    let offset = 0;
-    for (const chunk of audioChunkBufferRef.current) {
-      combinedPcm.set(chunk, offset);
-      offset += chunk.length;
-    }
-    
-    // Clear the buffer (we've taken these chunks)
-    audioChunkBufferRef.current = [];
-    
-    // Create WAV file and decode
-    await playAgentAudio(combinedPcm.buffer);
-  };
-
   const generateRecipesAndShoppingList = async () => {
     if (isGeneratingRecipes) return; // Prevent duplicate calls
     
@@ -813,7 +791,6 @@ IMPORTANT: You MUST say the EXACT phrase "Perfect! Let me generate some recipes 
     source.start();
   };
 
-<<<<<<< HEAD
   const pauseConversation = () => {
     console.log('Pausing conversation...');
     
